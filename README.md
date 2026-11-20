@@ -35,4 +35,6 @@ The previous assistant suggested opening HTKK online and accepting its update pr
 4. Implement the smallest complete Windows updater, with a reliable automatic trigger and clear failure reporting. Never force-close the app or claim an update succeeded without checking the installed result.
 5. Test an upgrade from an older release, already-current behavior, running-app behavior, failures and recovery, and preservation/restoration of representative test data. Document installation, scheduling, prerequisites, and operational limitations.
 
-Do not stage, commit, push, or create a remote without the user's explicit approval.
+## Contributing
+
+Contributions are welcome through GitHub issues and pull requests. Test changes on a disposable Windows installation; never include real taxpayer data. This project is licensed under the [MIT License](LICENSE).
