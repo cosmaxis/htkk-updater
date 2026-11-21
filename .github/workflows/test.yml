@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax-check all PowerShell files
+        shell: pwsh
+        run: |
+          $errs = 0
+          Get-ChildItem -Recurse -Include *.ps1, *.psm1 -File | ForEach-Object {
+            $tokens = $null; $parseErrs = $null
+            [void][System.Management.Automation.PSParser]::Tokenize((Get-Content $_.FullName -Raw), [ref]$parseErrs)
+            if ($parseErrs.Count) {
+              $errs += $parseErrs.Count
+              Write-Host "$($_.Name): $($parseErrs.Count) parse error(s)"
+            }
+          }
+          if ($errs) { throw "$errs parse error(s) found" }
+          Write-Host "All scripts parse cleanly"
+
+      - name: Verify UTF-8 BOM on launcher (Vietnamese UI text)
+        shell: pwsh
+        run: |
+          $b = [IO.File]::ReadAllBytes('HtkkLauncher.ps1')
+          if (-not ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)) {
+            throw 'HtkkLauncher.ps1 lost its UTF-8 BOM — PS 5.1 would misread the Vietnamese strings'
+          }
+          Write-Host "BOM present"
+
+      - name: Run offline test suite
+        shell: powershell
+        run: .\Test-HtkkUpdater.ps1
