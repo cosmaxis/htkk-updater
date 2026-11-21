@@ -1,4 +1,4 @@
-param([switch]$CheckOnly, [string]$Screenshot)
+﻿param([switch]$CheckOnly, [string]$Screenshot, [string]$Lang)
 
 $ErrorActionPreference = 'Stop'
 $install = $null
@@ -69,6 +69,7 @@ function Get-LauncherInfo {
         InstalledVersion = $null
         VersionError     = $null
         TaskState        = 'Not found'
+        TaskTime         = $null
         TaskError        = $null
         LastRun          = $null
         LastTaskResult   = $null
@@ -83,6 +84,9 @@ function Get-LauncherInfo {
         $tasks = @(Get-ScheduledTask -TaskName 'HTKK Daily Updater' -ErrorAction Stop)
         if ($tasks.Count -eq 1) {
             $info.TaskState = [string]$tasks[0].State
+            if ($tasks[0].Triggers.Count -gt 0) {
+                try { $info.TaskTime = ([datetime]$tasks[0].Triggers[0].StartBoundary).ToString('HH:mm') } catch {}
+            }
             try {
                 $t = $tasks[0] | Get-ScheduledTaskInfo -ErrorAction Stop
                 $info.LastRun = $t.LastRunTime
@@ -103,17 +107,108 @@ function Get-LauncherInfo {
     return [pscustomobject]$info
 }
 
+# ---- preferences + i18n ----
+$prefPath = Join-Path $env:LOCALAPPDATA 'HtkkUpdater\prefs.json'
+$script:Lang = 'en'
+try {
+    if ([IO.File]::Exists($prefPath)) {
+        $p = [IO.File]::ReadAllText($prefPath) | ConvertFrom-Json
+        if ($p.lang -match '^(en|vi)$') { $script:Lang = $p.lang }
+    }
+} catch {}
+if ($Lang -match '^(en|vi)$') { $script:Lang = $Lang }
+
+function Save-Prefs {
+    try {
+        $dir = [IO.Path]::GetDirectoryName($prefPath)
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        [IO.File]::WriteAllText($prefPath, (@{ lang = $script:Lang } | ConvertTo-Json -Compress))
+    } catch {}
+}
+
+$L = @{
+    en = @{
+        subtitle     = 'Automatic updates - every day at {0}'
+        installed    = 'INSTALLED VERSION'
+        latest       = 'Latest release: v{0}'
+        task         = 'SCHEDULED TASK'
+        lastRun      = 'LAST UPDATE CHECK'
+        updResult    = 'UPDATER RESULT'
+        settings     = 'SETTINGS'
+        timeLabel    = 'Daily update time'
+        apply        = 'Apply'
+        open         = 'Open HTKK'
+        check        = 'Check for updates'
+        taskMissing  = 'Not installed - run Install-HtkkUpdater.ps1'
+        taskFmt      = '{0} - daily at {1}'
+        unavailable  = 'Unavailable: {0}'
+        never        = 'Never'
+        noRuns       = 'No runs recorded yet'
+        notFound     = 'Not found'
+        saved        = 'Saved - daily at {0}'
+        saving       = 'Saving...'
+        invalidTime  = 'Enter a valid time (HH:mm)'
+        changeFail   = 'Could not change schedule: {0}'
+        pillChecking = 'Checking'
+        pillUpdating = 'Updating'
+        pillReady    = 'Update ready'
+        pillGood     = 'Up to date'
+        pillError    = 'Error'
+        pillUnknown  = 'Unknown'
+        pillRunning  = 'Running'
+        disabled     = 'The scheduled updater is disabled.'
+        alreadyRun   = 'The updater is already running.'
+        taskErr      = 'Expected exactly one scheduled updater task.'
+        exeMissing   = 'HTKK executable not found.'
+    }
+    vi = @{
+        subtitle     = 'Tự động cập nhật - mỗi ngày lúc {0}'
+        installed    = 'PHIÊN BẢN ĐÃ CÀI'
+        latest       = 'Bản mới nhất: v{0}'
+        task         = 'TÁC VỤ ĐỊNH KỲ'
+        lastRun      = 'KIỂM TRA LẦN CUỐI'
+        updResult    = 'KẾT QUẢ CẬP NHẬT'
+        settings     = 'CÀI ĐẶT'
+        timeLabel    = 'Giờ cập nhật mỗi ngày'
+        apply        = 'Áp dụng'
+        open         = 'Mở HTKK'
+        check        = 'Kiểm tra cập nhật'
+        taskMissing  = 'Chưa cài đặt - hãy chạy Install-HtkkUpdater.ps1'
+        taskFmt      = '{0} - mỗi ngày lúc {1}'
+        unavailable  = 'Không khả dụng: {0}'
+        never        = 'Chưa từng'
+        noRuns       = 'Chưa có lượt chạy nào'
+        notFound     = 'Không tìm thấy'
+        saved        = 'Đã lưu - mỗi ngày lúc {0}'
+        saving       = 'Đang lưu...'
+        invalidTime  = 'Nhập giờ hợp lệ (HH:mm)'
+        changeFail   = 'Không đổi được lịch: {0}'
+        pillChecking = 'Đang kiểm tra'
+        pillUpdating = 'Đang cập nhật'
+        pillReady    = 'Có bản mới'
+        pillGood     = 'Mới nhất'
+        pillError    = 'Lỗi'
+        pillUnknown  = 'Không rõ'
+        pillRunning  = 'Đang chạy'
+        disabled     = 'Tác vụ cập nhật đang tắt.'
+        alreadyRun   = 'Trình cập nhật đang chạy.'
+        taskErr      = 'Cần đúng một tác vụ cập nhật định kỳ.'
+        exeMissing   = 'Không tìm thấy HTKK.exe.'
+    }
+}
+function Str([string]$k) { return $L[$script:Lang][$k] }
+
 # ---- palette ----
 $bg       = [Drawing.Color]::FromArgb(13, 15, 19)
 $card     = [Drawing.Color]::FromArgb(24, 27, 34)
 $cardEdge = [Drawing.Color]::FromArgb(38, 42, 52)
 $ink      = [Drawing.Color]::FromArgb(240, 242, 246)
 $dim      = [Drawing.Color]::FromArgb(140, 148, 162)
-$accent   = [Drawing.Color]::FromArgb(88, 101, 242)   # indigo
+$accent   = [Drawing.Color]::FromArgb(88, 101, 242)
 $accentHi = [Drawing.Color]::FromArgb(110, 122, 255)
-$good     = [Drawing.Color]::FromArgb(52, 211, 153)   # emerald
-$warn     = [Drawing.Color]::FromArgb(251, 191, 36)   # amber
-$bad      = [Drawing.Color]::FromArgb(248, 113, 113)  # red
+$good     = [Drawing.Color]::FromArgb(52, 211, 153)
+$warn     = [Drawing.Color]::FromArgb(251, 191, 36)
+$bad      = [Drawing.Color]::FromArgb(248, 113, 113)
 
 function New-RoundedPath([Drawing.Rectangle]$r, [int]$radius) {
     $p = New-Object Drawing.Drawing2D.GraphicsPath
@@ -136,7 +231,7 @@ $fontBtn   = New-Object Drawing.Font('Segoe UI Semibold', 9.5)
 
 $form = New-Object Windows.Forms.Form
 $form.Text = 'HTKK'
-$form.ClientSize = New-Object Drawing.Size(440, 580)
+$form.ClientSize = New-Object Drawing.Size(440, 652)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
@@ -145,14 +240,13 @@ $form.ForeColor = $ink
 try { $form.Icon = [Drawing.Icon]::ExtractAssociatedIcon($exe) } catch {}
 if ($form.Icon -eq $null) { $form.Icon = [Drawing.SystemIcons]::Application }
 
-# ---- header: accent dot + title ----
+# ---- header ----
 $header = New-Object Windows.Forms.Panel
 $header.SetBounds(0, 0, 440, 84)
 $header.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
     $g = $e.Graphics
-    # gradient accent dot
     $dot = New-Object Drawing.Rectangle(28, 26, 34, 34)
     $brush = New-Object Drawing.Drawing2D.LinearGradientBrush($dot, $accentHi, $accent, 45)
     $g.FillEllipse($brush, $dot)
@@ -169,17 +263,51 @@ $title = New-Object Windows.Forms.Label
 $title.Text = 'HTKK Updater'
 $title.Font = $fontTitle
 $title.ForeColor = $ink
-$title.SetBounds(74, 24, 300, 26)
+$title.SetBounds(74, 24, 260, 26)
 $title.BackColor = [Drawing.Color]::Transparent
 $header.Controls.Add($title)
 
 $subtitle = New-Object Windows.Forms.Label
-$subtitle.Text = 'Automatic updates, every day at 09:00'
 $subtitle.Font = $fontDim
 $subtitle.ForeColor = $dim
-$subtitle.SetBounds(74, 50, 320, 18)
+$subtitle.SetBounds(74, 50, 290, 18)
+$subtitle.AutoEllipsis = $true
 $subtitle.BackColor = [Drawing.Color]::Transparent
 $header.Controls.Add($subtitle)
+
+# language segmented toggle (EN | VI) - one click switches
+$langSeg = New-Object Windows.Forms.Panel
+$langSeg.SetBounds(370, 30, 46, 24)
+$langSeg.Cursor = [Windows.Forms.Cursors]::Hand
+$langSeg.Tag = @{ Lang = $script:Lang }
+$langSeg.Add_Paint({
+    param($s, $e)
+    $e.Graphics.SmoothingMode = 'AntiAlias'
+    $g = $e.Graphics
+    $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
+    $path = New-RoundedPath $rect 12
+    $b = New-Object Drawing.SolidBrush($card)
+    $g.FillPath($b, $path); $b.Dispose()
+    $pen = New-Object Drawing.Pen($cardEdge, 1)
+    $g.DrawPath($pen, $path); $pen.Dispose(); $path.Dispose()
+    $sf = New-Object Drawing.StringFormat
+    $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+    $active = if ($s.Tag.Lang -eq 'en') { 'EN' } else { 'VI' }
+    $inactive = if ($s.Tag.Lang -eq 'en') { 'VI' } else { 'EN' }
+    $halfW = $s.Width / 2
+    # active half = filled accent segment
+    $actRect = New-Object Drawing.Rectangle(0, 0, [int]$halfW, ($s.Height - 1))
+    $ap = New-RoundedPath $actRect 12
+    $ab = New-Object Drawing.SolidBrush($accent)
+    $g.FillPath($ab, $ap); $ab.Dispose(); $ap.Dispose()
+    $wb = New-Object Drawing.SolidBrush([Drawing.Color]::White)
+    $db = New-Object Drawing.SolidBrush($dim)
+    $g.DrawString($active, $fontPill, $wb, (New-Object Drawing.RectangleF(0, 0, $halfW, $s.Height)), $sf)
+    $g.DrawString($inactive, $fontPill, $db, (New-Object Drawing.RectangleF($halfW, 0, $halfW, $s.Height)), $sf)
+    $wb.Dispose(); $db.Dispose(); $sf.Dispose()
+})
+$langSeg.Add_Click({ Switch-Language })
+$header.Controls.Add($langSeg)
 
 # ---- version hero card ----
 $hero = New-Object Windows.Forms.Panel
@@ -199,10 +327,9 @@ $hero.Add_Paint({
 $form.Controls.Add($hero)
 
 $vLabel = New-Object Windows.Forms.Label
-$vLabel.Text = 'INSTALLED VERSION'
 $vLabel.Font = $fontPill
 $vLabel.ForeColor = $dim
-$vLabel.SetBounds(20, 16, 200, 16)
+$vLabel.SetBounds(20, 16, 240, 16)
 $vLabel.BackColor = [Drawing.Color]::Transparent
 $hero.Controls.Add($vLabel)
 
@@ -222,10 +349,9 @@ $vLatest.SetBounds(20, 92, 350, 18)
 $vLatest.BackColor = [Drawing.Color]::Transparent
 $hero.Controls.Add($vLatest)
 
-# status pill (right side of hero)
 $pill = New-Object Windows.Forms.Panel
 $pill.SetBounds(268, 20, 104, 30)
-$pill.Tag = @{ Color = $dim; Text = 'Checking' }
+$pill.Tag = @{ Color = $dim; Text = '' }
 $pill.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
@@ -240,10 +366,10 @@ $pill.Add_Paint({
     $e.Graphics.DrawPath($pen, $path)
     $pen.Dispose(); $path.Dispose()
     $tb = New-Object Drawing.SolidBrush($c)
-    $e.Graphics.FillEllipse($tb, (New-Object Drawing.Rectangle(12, 11, 8, 8)))
+    $e.Graphics.FillEllipse($tb, (New-Object Drawing.Rectangle(10, 11, 8, 8)))
     $sf = New-Object Drawing.StringFormat
     $sf.LineAlignment = 'Center'
-    $e.Graphics.DrawString($s.Tag.Text, $fontPill, $tb, (New-Object Drawing.RectangleF(24, 0, ($s.Width - 26), $s.Height)), $sf)
+    $e.Graphics.DrawString($s.Tag.Text, $fontPill, $tb, (New-Object Drawing.RectangleF(22, 0, ($s.Width - 24), $s.Height)), $sf)
     $tb.Dispose(); $sf.Dispose()
 })
 $hero.Controls.Add($pill)
@@ -265,12 +391,11 @@ $detail.Add_Paint({
 })
 $form.Controls.Add($detail)
 
-function New-DetailRow([string]$label, [int]$y) {
+function New-DetailRow([int]$y) {
     $l = New-Object Windows.Forms.Label
-    $l.Text = $label.ToUpper()
     $l.Font = $fontSmall
     $l.ForeColor = $dim
-    $l.SetBounds(20, $y, 130, 16)
+    $l.SetBounds(20, $y, 170, 16)
     $l.BackColor = [Drawing.Color]::Transparent
     $detail.Controls.Add($l)
     $v = New-Object Windows.Forms.Label
@@ -281,11 +406,73 @@ function New-DetailRow([string]$label, [int]$y) {
     $v.BackColor = [Drawing.Color]::Transparent
     $v.AutoEllipsis = $true
     $detail.Controls.Add($v)
-    return $v
+    return [pscustomobject]@{ Label = $l; Value = $v }
 }
-$rowTask   = New-DetailRow 'Scheduled task'    16
-$rowRun    = New-DetailRow 'Last update check' 62
-$rowResult = New-DetailRow 'Updater result'    108
+$rowTask   = New-DetailRow 16
+$rowRun    = New-DetailRow 62
+$rowResult = New-DetailRow 108
+
+# ---- settings card ----
+$settingsCard = New-Object Windows.Forms.Panel
+$settingsCard.SetBounds(24, 424, 392, 112)
+$settingsCard.Add_Paint({
+    param($s, $e)
+    $e.Graphics.SmoothingMode = 'AntiAlias'
+    $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
+    $path = New-RoundedPath $rect 14
+    $b = New-Object Drawing.SolidBrush($card)
+    $e.Graphics.FillPath($b, $path)
+    $b.Dispose()
+    $pen = New-Object Drawing.Pen($cardEdge, 1)
+    $e.Graphics.DrawPath($pen, $path)
+    $pen.Dispose(); $path.Dispose()
+})
+$form.Controls.Add($settingsCard)
+
+$lblSettings = New-Object Windows.Forms.Label
+$lblSettings.Font = $fontSmall
+$lblSettings.ForeColor = $dim
+$lblSettings.SetBounds(20, 12, 200, 16)
+$lblSettings.BackColor = [Drawing.Color]::Transparent
+$settingsCard.Controls.Add($lblSettings)
+
+$lblTime = New-Object Windows.Forms.Label
+$lblTime.Font = $fontUi
+$lblTime.ForeColor = $ink
+$lblTime.SetBounds(20, 32, 220, 20)
+$lblTime.BackColor = [Drawing.Color]::Transparent
+$settingsCard.Controls.Add($lblTime)
+
+$timeBox = New-Object Windows.Forms.ComboBox
+$timeBox.SetBounds(20, 56, 110, 28)
+$timeBox.FlatStyle = 'Flat'
+$timeBox.BackColor = $card
+$timeBox.ForeColor = $ink
+$timeBox.Font = $fontUi
+$timeBox.DrawMode = 'OwnerDrawFixed'
+$timeBox.DropDownHeight = 220
+foreach ($h in 0..23) { [void]$timeBox.Items.Add(('{0:d2}:00' -f $h)) }
+$timeBox.Add_DrawItem({
+    param($s, $e)
+    if ($e.Index -lt 0) { return }
+    $selected = ($e.State -band [Windows.Forms.DrawItemState]::Selected) -ne 0
+    $bgc = if ($selected) { $accent } else { $card }
+    $fgc = if ($selected) { [Drawing.Color]::White } else { $ink }
+    $bb = New-Object Drawing.SolidBrush($bgc)
+    $e.Graphics.FillRectangle($bb, $e.Bounds)
+    $tb = New-Object Drawing.SolidBrush($fgc)
+    $e.Graphics.DrawString($s.Items[$e.Index], $fontUi, $tb, (New-Object Drawing.PointF(($e.Bounds.X + 6), ($e.Bounds.Y + 3))))
+    $bb.Dispose(); $tb.Dispose()
+})
+$settingsCard.Controls.Add($timeBox)
+
+$lblSave = New-Object Windows.Forms.Label
+$lblSave.Font = $fontDim
+$lblSave.ForeColor = $dim
+$lblSave.SetBounds(20, 88, 352, 16)
+$lblSave.AutoEllipsis = $true
+$lblSave.BackColor = [Drawing.Color]::Transparent
+$settingsCard.Controls.Add($lblSave)
 
 # ---- buttons ----
 function New-UIButton([string]$text, [Drawing.Rectangle]$bounds, [bool]$primary) {
@@ -328,25 +515,28 @@ function New-UIButton([string]$text, [Drawing.Rectangle]$bounds, [bool]$primary)
     return $btn
 }
 
-$btnOpen = New-UIButton 'Open HTKK' (New-Object Drawing.Rectangle(24, 436, 188, 46)) $true
+$btnApply = New-UIButton 'Apply' (New-Object Drawing.Rectangle(266, 56, 106, 30)) $false
+$settingsCard.Controls.Add($btnApply)
+
+$btnOpen = New-UIButton '' (New-Object Drawing.Rectangle(24, 556, 188, 46)) $true
 $btnOpen.Add_Click({
     try {
-        if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'HTKK executable not found.' }
+        if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw (Str 'exeMissing') }
         Start-Process -FilePath $exe -WorkingDirectory ([IO.Path]::GetDirectoryName($exe))
     } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTKK', 'OK', 'Error') | Out-Null }
 })
 $form.Controls.Add($btnOpen)
 
-$btnCheck = New-UIButton 'Check for updates' (New-Object Drawing.Rectangle(228, 436, 188, 46)) $false
+$btnCheck = New-UIButton '' (New-Object Drawing.Rectangle(228, 556, 188, 46)) $false
 $btnCheck.Add_Click({
     try {
         $tasks = @(Get-ScheduledTask -TaskName 'HTKK Daily Updater' -ErrorAction Stop)
-        if ($tasks.Count -ne 1) { throw 'Expected exactly one scheduled updater task.' }
+        if ($tasks.Count -ne 1) { throw (Str 'taskErr') }
         $task = $tasks[0]
-        if ($task.State -eq 'Disabled') { throw 'The scheduled updater is disabled.' }
-        if ($task.State -eq 'Running') { throw 'The updater is already running.' }
+        if ($task.State -eq 'Disabled') { throw (Str 'disabled') }
+        if ($task.State -eq 'Running') { throw (Str 'alreadyRun') }
         $task | Start-ScheduledTask -ErrorAction Stop
-        $pill.Tag.Text = 'Running'; $pill.Tag.Color = $warn; $pill.Invalidate()
+        $pill.Tag.Text = Str 'pillRunning'; $pill.Tag.Color = $warn; $pill.Invalidate()
     } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTKK', 'OK', 'Error') | Out-Null }
     finally { & $refresh }
 })
@@ -358,47 +548,103 @@ $footer.Text = 'github.com/cosmaxis/htkk-updater'
 $footer.Font = $fontSmall
 $footer.ForeColor = [Drawing.Color]::FromArgb(90, 96, 110)
 $footer.TextAlign = 'MiddleCenter'
-$footer.SetBounds(0, 546, 440, 20)
+$footer.SetBounds(0, 618, 440, 20)
 $footer.BackColor = [Drawing.Color]::Transparent
 $form.Controls.Add($footer)
+
+# ---- language switch (one click) ----
+$script:timeInit = $false
+function Switch-Language {
+    $script:Lang = if ($script:Lang -eq 'en') { 'vi' } else { 'en' }
+    $langSeg.Tag.Lang = $script:Lang
+    Save-Prefs
+    Update-Text
+}
+function Update-Text {
+    $vLabel.Text = Str 'installed'
+    $rowTask.Label.Text = Str 'task'
+    $rowRun.Label.Text = Str 'lastRun'
+    $rowResult.Label.Text = Str 'updResult'
+    $lblSettings.Text = Str 'settings'
+    $lblTime.Text = Str 'timeLabel'
+    $btnApply.Tag.Text = Str 'apply'; $btnApply.Invalidate()
+    $btnOpen.Tag.Text = Str 'open'; $btnOpen.Invalidate()
+    $btnCheck.Tag.Text = Str 'check'; $btnCheck.Invalidate()
+    $langSeg.Invalidate()
+    & $refresh
+}
 
 # ---- refresh ----
 $refresh = {
     $i = Get-LauncherInfo
+    $timeFmt = '09:00'
+    if ($i.TaskTime) { $timeFmt = $i.TaskTime }
+    $subtitle.Text = (Str 'subtitle') -f $timeFmt
+    if (-not $script:timeInit -and $i.TaskTime) { $timeBox.Text = $i.TaskTime; $script:timeInit = $true }
     if ($i.InstalledVersion) {
         $vBig.Text = "v$($i.InstalledVersion)"
     } else {
-        $vBig.Text = 'Not found'
+        $vBig.Text = Str 'notFound'
     }
     if ($i.LatestVersion) {
-        $vLatest.Text = "Latest release: v$($i.LatestVersion)"
+        $vLatest.Text = (Str 'latest') -f $i.LatestVersion
     } else {
         $vLatest.Text = ''
     }
-    if ($i.TaskError) { $rowTask.Text = "Unavailable: $($i.TaskError)" }
-    elseif ($i.TaskState -eq 'Not found') { $rowTask.Text = 'Not installed - run Install-HtkkUpdater.ps1' }
-    else { $rowTask.Text = "$($i.TaskState) - daily at 09:00" }
-    if ($i.LastRun) { $rowRun.Text = ([datetime]$i.LastRun).ToString('MMM d, yyyy HH:mm') }
-    else { $rowRun.Text = 'Never' }
-    if ($i.Error) { $rowResult.Text = "$($i.Status) - $($i.Error)"; $rowResult.ForeColor = $bad }
-    elseif ($i.Status) { $rowResult.Text = "$($i.Status)" + $(if ($i.ResultAge) { " at $((([datetime]$i.ResultAge)).ToString('MMM d HH:mm'))" } else { '' }); $rowResult.ForeColor = $ink }
-    else { $rowResult.Text = 'No runs recorded yet'; $rowResult.ForeColor = $ink }
-    # pill
-    if ($i.Error) { $pill.Tag.Text = 'Error'; $pill.Tag.Color = $bad }
-    elseif ($i.TaskState -eq 'Running') { $pill.Tag.Text = 'Updating'; $pill.Tag.Color = $warn }
-    elseif ($i.InstalledVersion -and $i.LatestVersion -and ([version]$i.LatestVersion -gt [version]$i.InstalledVersion)) { $pill.Tag.Text = 'Update ready'; $pill.Tag.Color = $warn }
-    elseif ($i.Status -eq 'Current' -or $i.Status -eq 'Updated' -or $i.InstalledVersion) { $pill.Tag.Text = 'Up to date'; $pill.Tag.Color = $good }
-    else { $pill.Tag.Text = 'Unknown'; $pill.Tag.Color = $dim }
+    if ($i.TaskError) { $rowTask.Value.Text = (Str 'unavailable') -f $i.TaskError }
+    elseif ($i.TaskState -eq 'Not found') { $rowTask.Value.Text = Str 'taskMissing' }
+    else { $rowTask.Value.Text = (Str 'taskFmt') -f $i.TaskState, $timeFmt }
+    if ($i.LastRun) { $rowRun.Value.Text = ([datetime]$i.LastRun).ToString('MMM d, yyyy HH:mm') }
+    else { $rowRun.Value.Text = Str 'never' }
+    if ($i.Error) { $rowResult.Value.Text = "$($i.Status) - $($i.Error)"; $rowResult.Value.ForeColor = $bad }
+    elseif ($i.Status) { $rowResult.Value.Text = "$($i.Status)" + $(if ($i.ResultAge) { " at $((([datetime]$i.ResultAge)).ToString('MMM d HH:mm'))" } else { '' }); $rowResult.Value.ForeColor = $ink }
+    else { $rowResult.Value.Text = Str 'noRuns'; $rowResult.Value.ForeColor = $ink }
+    if ($i.Error) { $pill.Tag.Text = Str 'pillError'; $pill.Tag.Color = $bad }
+    elseif ($i.TaskState -eq 'Running') { $pill.Tag.Text = Str 'pillUpdating'; $pill.Tag.Color = $warn }
+    elseif ($i.InstalledVersion -and $i.LatestVersion -and ([version]$i.LatestVersion -gt [version]$i.InstalledVersion)) { $pill.Tag.Text = Str 'pillReady'; $pill.Tag.Color = $warn }
+    elseif ($i.Status -eq 'Current' -or $i.Status -eq 'Updated' -or $i.InstalledVersion) { $pill.Tag.Text = Str 'pillGood'; $pill.Tag.Color = $good }
+    else { $pill.Tag.Text = Str 'pillUnknown'; $pill.Tag.Color = $dim }
     $pill.Invalidate()
 }
+
+# ---- apply schedule change (elevated via UAC when needed) ----
+$btnApply.Add_Click({
+    $t = $timeBox.Text.Trim()
+    if ($t -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') {
+        $lblSave.ForeColor = $bad
+        $lblSave.Text = Str 'invalidTime'
+        return
+    }
+    if ($t -match '^\d:') { $t = "0$t" }
+    $lblSave.ForeColor = $dim
+    $lblSave.Text = Str 'saving'
+    [Windows.Forms.Application]::DoEvents()
+    try {
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if ($isAdmin) {
+            & schtasks /change /tn 'HTKK Daily Updater' /st $t | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "schtasks exit $LASTEXITCODE" }
+        } else {
+            $p = Start-Process -FilePath 'schtasks.exe' -ArgumentList '/change','/tn','HTKK Daily Updater','/st',$t -Verb RunAs -Wait -PassThru -ErrorAction Stop
+            if ($p.ExitCode -ne 0) { throw "schtasks exit $($p.ExitCode)" }
+        }
+        $lblSave.ForeColor = $good
+        $lblSave.Text = (Str 'saved') -f $t
+        $script:timeInit = $false
+    } catch {
+        $lblSave.ForeColor = $bad
+        $lblSave.Text = (Str 'changeFail') -f $_.Exception.Message
+    }
+    finally { & $refresh }
+})
 
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 3000
 $timer.Add_Tick($refresh)
-$form.Add_Shown({ & $refresh; $timer.Start() })
+$form.Add_Shown({ Update-Text; $timer.Start() })
 $form.Add_FormClosed({ $timer.Stop(); $timer.Dispose() })
 if ($Screenshot) {
-    & $refresh
+    Update-Text
     $bmp = New-Object Drawing.Bitmap($form.Width, $form.Height)
     $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
     $bmp.Save($Screenshot, [Drawing.Imaging.ImageFormat]::Png)
