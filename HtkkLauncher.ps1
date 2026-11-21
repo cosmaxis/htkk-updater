@@ -62,6 +62,22 @@ if ($CheckOnly) {
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+public static class Win32 {
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, int m, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
+}
+public class BufPanel : Panel {
+    public BufPanel() {
+        this.DoubleBuffered = true;
+        this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+}
+'@ -ReferencedAssemblies System.Windows.Forms, System.Drawing
 $resultPath = Join-Path $env:ProgramData 'HtkkUpdater\last-result.json'
 
 function Get-LauncherInfo {
@@ -233,15 +249,39 @@ $form = New-Object Windows.Forms.Form
 $form.Text = 'HTKK'
 $form.ClientSize = New-Object Drawing.Size(440, 652)
 $form.StartPosition = 'CenterScreen'
-$form.FormBorderStyle = 'FixedSingle'
-$form.MaximizeBox = $false
+$form.FormBorderStyle = 'None'
 $form.BackColor = $bg
 $form.ForeColor = $ink
+$form.KeyPreview = $true
+$form.Add_KeyDown({ if ($_.KeyCode -eq 'Escape') { $form.Close() } })
+# rounded window: clip corners, draw hairline edge
+$rp = New-RoundedPath (New-Object Drawing.Rectangle(0, 0, 440, 652)) 18
+$form.Region = New-Object Drawing.Region($rp)
+$rp.Dispose()
+$form.Add_Paint({
+    param($s, $e)
+    $e.Graphics.SmoothingMode = 'AntiAlias'
+    $rect = New-Object Drawing.Rectangle(0, 0, ($s.ClientSize.Width - 1), ($s.ClientSize.Height - 1))
+    $path = New-RoundedPath $rect 18
+    $pen = New-Object Drawing.Pen([Drawing.Color]::FromArgb(80, 56, 58, 60), 1)
+    $e.Graphics.DrawPath($pen, $path)
+    $pen.Dispose(); $path.Dispose()
+})
 try { $form.Icon = [Drawing.Icon]::ExtractAssociatedIcon($exe) } catch {}
 if ($form.Icon -eq $null) { $form.Icon = [Drawing.SystemIcons]::Application }
 
+# drag anywhere on header / background to move
+$startDrag = {
+    param($s, $e)
+    if ($e.Button -eq 'Left') {
+        [Win32]::ReleaseCapture() | Out-Null
+        [Win32]::SendMessage($form.Handle, 0xA1, [IntPtr]2, [IntPtr]0) | Out-Null
+    }
+}
+$form.Add_MouseDown($startDrag)
+
 # ---- header ----
-$header = New-Object Windows.Forms.Panel
+$header = New-Object BufPanel
 $header.SetBounds(0, 0, 440, 84)
 $header.Add_Paint({
     param($s, $e)
@@ -260,6 +300,45 @@ $header.Add_Paint({
     $wb.Dispose(); $sf.Dispose()
 })
 $form.Controls.Add($header)
+$header.Add_MouseDown($startDrag)
+
+# window chrome: minimize + close, custom-drawn
+function New-ChromeButton([Drawing.Rectangle]$b, [string]$kind) {
+    $btn = New-Object BufPanel
+    $btn.SetBounds($b.X, $b.Y, $b.Width, $b.Height)
+    $btn.Cursor = [Windows.Forms.Cursors]::Hand
+    $btn.Tag = @{ Kind = $kind; Hover = $false }
+    $btn.Add_Paint({
+        param($s, $e)
+        $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'
+        if ($s.Tag.Hover) {
+            $fill = if ($s.Tag.Kind -eq 'close') { $bad } else { [Drawing.Color]::FromArgb(58, 58, 60) }
+            $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
+            $path = New-RoundedPath $rect 13
+            $fb = New-Object Drawing.SolidBrush($fill)
+            $g.FillPath($fb, $path); $fb.Dispose(); $path.Dispose()
+        }
+        $pen = New-Object Drawing.Pen($ink, 1.8)
+        $pen.StartCap = 'Round'; $pen.EndCap = 'Round'
+        $cx = [int]($s.Width / 2); $cy = [int]($s.Height / 2)
+        if ($s.Tag.Kind -eq 'close') {
+            $g.DrawLine($pen, ($cx - 4), ($cy - 4), ($cx + 4), ($cy + 4))
+            $g.DrawLine($pen, ($cx + 4), ($cy - 4), ($cx - 4), ($cy + 4))
+        } else {
+            $g.DrawLine($pen, ($cx - 5), $cy, ($cx + 5), $cy)
+        }
+        $pen.Dispose()
+    })
+    $btn.Add_MouseEnter({ $this.Tag.Hover = $true; $this.Invalidate() })
+    $btn.Add_MouseLeave({ $this.Tag.Hover = $false; $this.Invalidate() })
+    return $btn
+}
+$btnMin = New-ChromeButton (New-Object Drawing.Rectangle(376, 8, 26, 26)) 'min'
+$btnMin.Add_Click({ $form.WindowState = 'Minimized' })
+$btnClose = New-ChromeButton (New-Object Drawing.Rectangle(408, 8, 26, 26)) 'close'
+$btnClose.Add_Click({ $form.Close() })
+$header.Controls.Add($btnMin)
+$header.Controls.Add($btnClose)
 
 $title = New-Object Windows.Forms.Label
 $title.Text = 'HTKK Updater'
@@ -267,19 +346,21 @@ $title.Font = $fontTitle
 $title.ForeColor = $ink
 $title.SetBounds(74, 24, 260, 26)
 $title.BackColor = [Drawing.Color]::Transparent
+$title.Add_MouseDown($startDrag)
 $header.Controls.Add($title)
 
 $subtitle = New-Object Windows.Forms.Label
 $subtitle.Font = $fontDim
 $subtitle.ForeColor = $dim
-$subtitle.SetBounds(74, 50, 290, 18)
+$subtitle.SetBounds(74, 50, 270, 18)
 $subtitle.AutoEllipsis = $true
 $subtitle.BackColor = [Drawing.Color]::Transparent
+$subtitle.Add_MouseDown($startDrag)
 $header.Controls.Add($subtitle)
 
 # language segmented toggle (EN | VI) - one click switches
-$langSeg = New-Object Windows.Forms.Panel
-$langSeg.SetBounds(370, 30, 46, 24)
+$langSeg = New-Object BufPanel
+$langSeg.SetBounds(352, 48, 64, 26)
 $langSeg.Cursor = [Windows.Forms.Cursors]::Hand
 $langSeg.Tag = @{ Lang = $script:Lang }
 $langSeg.Add_Paint({
@@ -312,7 +393,7 @@ $langSeg.Add_Click({ Switch-Language })
 $header.Controls.Add($langSeg)
 
 # ---- version hero card ----
-$hero = New-Object Windows.Forms.Panel
+$hero = New-Object BufPanel
 $hero.SetBounds(24, 96, 392, 128)
 $hero.Add_Paint({
     param($s, $e)
@@ -351,7 +432,7 @@ $vLatest.SetBounds(20, 92, 350, 18)
 $vLatest.BackColor = [Drawing.Color]::Transparent
 $hero.Controls.Add($vLatest)
 
-$pill = New-Object Windows.Forms.Panel
+$pill = New-Object BufPanel
 $pill.SetBounds(268, 20, 104, 30)
 $pill.Tag = @{ Color = $dim; Text = '' }
 $pill.Add_Paint({
@@ -377,7 +458,7 @@ $pill.Add_Paint({
 $hero.Controls.Add($pill)
 
 # ---- detail card ----
-$detail = New-Object Windows.Forms.Panel
+$detail = New-Object BufPanel
 $detail.SetBounds(24, 240, 392, 168)
 $detail.Add_Paint({
     param($s, $e)
@@ -420,7 +501,7 @@ $rowRun    = New-DetailRow 62
 $rowResult = New-DetailRow 108
 
 # ---- settings card ----
-$settingsCard = New-Object Windows.Forms.Panel
+$settingsCard = New-Object BufPanel
 $settingsCard.SetBounds(24, 424, 392, 112)
 $settingsCard.Add_Paint({
     param($s, $e)
@@ -450,28 +531,120 @@ $lblTime.SetBounds(20, 32, 220, 20)
 $lblTime.BackColor = [Drawing.Color]::Transparent
 $settingsCard.Controls.Add($lblTime)
 
-$timeBox = New-Object Windows.Forms.ComboBox
-$timeBox.SetBounds(20, 56, 110, 28)
-$timeBox.FlatStyle = 'Flat'
-$timeBox.BackColor = $card
-$timeBox.ForeColor = $ink
-$timeBox.Font = $fontUi
-$timeBox.DrawMode = 'OwnerDrawFixed'
-$timeBox.DropDownHeight = 220
-foreach ($h in 0..23) { [void]$timeBox.Items.Add(('{0:d2}:00' -f $h)) }
-$timeBox.Add_DrawItem({
+# custom time field (fully drawn - no WinForms chrome)
+$timeField = New-Object BufPanel
+$timeField.SetBounds(20, 56, 132, 30)
+$timeField.Cursor = [Windows.Forms.Cursors]::Hand
+$timeField.Tag = @{ Value = '09:00'; Hover = $false }
+$timeField.Add_Paint({
     param($s, $e)
-    if ($e.Index -lt 0) { return }
-    $selected = ($e.State -band [Windows.Forms.DrawItemState]::Selected) -ne 0
-    $bgc = if ($selected) { $accent } else { $card }
-    $fgc = if ($selected) { [Drawing.Color]::White } else { $ink }
-    $bb = New-Object Drawing.SolidBrush($bgc)
-    $e.Graphics.FillRectangle($bb, $e.Bounds)
-    $tb = New-Object Drawing.SolidBrush($fgc)
-    $e.Graphics.DrawString($s.Items[$e.Index], $fontUi, $tb, (New-Object Drawing.PointF(($e.Bounds.X + 6), ($e.Bounds.Y + 3))))
-    $bb.Dispose(); $tb.Dispose()
+    $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'
+    $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
+    $path = New-RoundedPath $rect 9
+    $fill = if ($s.Tag.Hover) { [Drawing.Color]::FromArgb(54, 54, 56) } else { [Drawing.Color]::FromArgb(44, 44, 46) }
+    $b = New-Object Drawing.SolidBrush($fill)
+    $g.FillPath($b, $path); $b.Dispose()
+    $pen = New-Object Drawing.Pen($cardEdge, 1)
+    $g.DrawPath($pen, $path); $pen.Dispose(); $path.Dispose()
+    $tb = New-Object Drawing.SolidBrush($ink)
+    $sf = New-Object Drawing.StringFormat; $sf.LineAlignment = 'Center'
+    $g.DrawString([string]$s.Tag.Value, $fontUi, $tb, (New-Object Drawing.RectangleF(12, 0, ($s.Width - 40), $s.Height)), $sf)
+    $tb.Dispose(); $sf.Dispose()
+    $gp = New-Object Drawing.Pen($dim, 1.8)
+    $gp.StartCap = 'Round'; $gp.EndCap = 'Round'
+    $cx = $s.Width - 18; $cy = [int]($s.Height / 2)
+    $g.DrawLine($gp, ($cx - 4), ($cy - 2), $cx, ($cy + 2))
+    $g.DrawLine($gp, $cx, ($cy + 2), ($cx + 4), ($cy - 2))
+    $gp.Dispose()
 })
-$settingsCard.Controls.Add($timeBox)
+$timeField.Add_MouseEnter({ $this.Tag.Hover = $true; $this.Invalidate() })
+$timeField.Add_MouseLeave({ $this.Tag.Hover = $false; $this.Invalidate() })
+$timeField.Add_Click({ Show-TimePopup })
+$settingsCard.Controls.Add($timeField)
+
+$script:popup = $null
+function New-TimePopup {
+    $cellW = 104; $cellH = 26; $gap = 4; $pad = 8
+    $pw = ($pad * 2) + ($cellW * 2) + $gap
+    $ph = ($pad * 2) + ($cellH * 12) + ($gap * 11)
+    $popup = New-Object Windows.Forms.Form
+    $popup.FormBorderStyle = 'None'
+    $popup.ShowInTaskbar = $false
+    $popup.TopMost = $true
+    $popup.StartPosition = 'Manual'
+    $popup.Size = New-Object Drawing.Size($pw, $ph)
+    $popup.BackColor = [Drawing.Color]::FromArgb(36, 36, 38)
+    $loc = $timeField.PointToScreen((New-Object Drawing.Point(0, ($timeField.Height + 6))))
+    $scr = [Windows.Forms.Screen]::FromPoint($loc).WorkingArea
+    if (($loc.Y + $ph) -gt $scr.Bottom) { $loc.Y = ($timeField.PointToScreen((New-Object Drawing.Point(0, 0)))).Y - $ph - 6 }
+    if (($loc.X + $pw) -gt $scr.Right) { $loc.X = $scr.Right - $pw }
+    $popup.Location = $loc
+    $popup.Owner = $form
+    $rpp = New-RoundedPath (New-Object Drawing.Rectangle(0, 0, $pw, $ph)) 12
+    $popup.Region = New-Object Drawing.Region($rpp); $rpp.Dispose()
+    $list = New-Object BufPanel
+    $list.Dock = 'Fill'
+    $list.Tag = @{ Hover = -1; CellW = $cellW; CellH = $cellH; Gap = $gap; Pad = $pad; Field = $timeField; Popup = $popup }
+    $list.Add_Paint({
+        param($s, $e)
+        $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'
+        $t = $s.Tag
+        for ($c = 0; $c -lt 2; $c++) {
+            for ($r = 0; $r -lt 12; $r++) {
+                $idx = $c * 12 + $r
+                $x = $t.Pad + $c * ($t.CellW + $t.Gap)
+                $y = $t.Pad + $r * ($t.CellH + $t.Gap)
+                $item = '{0:d2}:00' -f $idx
+                $cur = ($item -eq $t.Field.Tag.Value)
+                $rect = New-Object Drawing.Rectangle($x, $y, $t.CellW, $t.CellH)
+                if ($cur -or ($t.Hover -eq $idx)) {
+                    $fc = if ($cur) { $accent } else { [Drawing.Color]::FromArgb(56, 56, 58) }
+                    $path = New-RoundedPath $rect 8
+                    $fb = New-Object Drawing.SolidBrush($fc)
+                    $g.FillPath($fb, $path); $fb.Dispose(); $path.Dispose()
+                }
+                $fg = if ($cur) { [Drawing.Color]::White } else { $ink }
+                $tb = New-Object Drawing.SolidBrush($fg)
+                $sf = New-Object Drawing.StringFormat
+                $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+                $g.DrawString($item, $fontUi, $tb, (New-Object Drawing.RectangleF($x, $y, $t.CellW, $t.CellH)), $sf)
+                $tb.Dispose(); $sf.Dispose()
+            }
+        }
+        $pr = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
+        $pp = New-RoundedPath $pr 12
+        $pen = New-Object Drawing.Pen($cardEdge, 1)
+        $g.DrawPath($pen, $pp); $pen.Dispose(); $pp.Dispose()
+    })
+    $pick = {
+        param($s, $e)
+        $t = $s.Tag
+        $c = [math]::Floor(($e.X - $t.Pad) / ($t.CellW + $t.Gap))
+        $r = [math]::Floor(($e.Y - $t.Pad) / ($t.CellH + $t.Gap))
+        if ($c -lt 0 -or $c -gt 1 -or $r -lt 0 -or $r -gt 11) { return -1 }
+        if (($e.X - $t.Pad - $c * ($t.CellW + $t.Gap)) -gt $t.CellW) { return -1 }
+        if (($e.Y - $t.Pad - $r * ($t.CellH + $t.Gap)) -gt $t.CellH) { return -1 }
+        return [int]($c * 12 + $r)
+    }
+    $list.Add_MouseMove({ $i = & $pick $this $_; if ($i -ne $this.Tag.Hover) { $this.Tag.Hover = $i; $this.Invalidate() } })
+    $list.Add_MouseLeave({ $this.Tag.Hover = -1; $this.Invalidate() })
+    $list.Add_MouseClick({
+        $i = & $pick $this $_
+        if ($i -ge 0) {
+            $this.Tag.Field.Tag.Value = '{0:d2}:00' -f $i
+            $this.Tag.Field.Invalidate()
+            $this.Tag.Popup.Close()
+        }
+    })
+    $popup.Controls.Add($list)
+    $popup.Add_Deactivate({ $popup.Close() })
+    return $popup
+}
+function Show-TimePopup {
+    if ($script:popup -ne $null -and -not $script:popup.IsDisposed) { $script:popup.Close(); return }
+    $script:popup = New-TimePopup
+    [void]$script:popup.Show($form)
+}
 
 $lblSave = New-Object Windows.Forms.Label
 $lblSave.Font = $fontDim
@@ -483,7 +656,7 @@ $settingsCard.Controls.Add($lblSave)
 
 # ---- buttons ----
 function New-UIButton([string]$text, [Drawing.Rectangle]$bounds, [bool]$primary) {
-    $btn = New-Object Windows.Forms.Panel
+    $btn = New-Object BufPanel
     $btn.SetBounds($bounds.X, $bounds.Y, $bounds.Width, $bounds.Height)
     $btn.Cursor = [Windows.Forms.Cursors]::Hand
     $btn.Tag = @{ Text = $text; Primary = $primary; Hover = $false; Pressed = $false }
@@ -587,7 +760,7 @@ $refresh = {
     $timeFmt = '09:00'
     if ($i.TaskTime) { $timeFmt = $i.TaskTime }
     $subtitle.Text = (Str 'subtitle') -f $timeFmt
-    if (-not $script:timeInit -and $i.TaskTime) { $timeBox.Text = $i.TaskTime; $script:timeInit = $true }
+    if (-not $script:timeInit -and $i.TaskTime) { $timeField.Tag.Value = $i.TaskTime; $timeField.Invalidate(); $script:timeInit = $true }
     if ($i.InstalledVersion) {
         $vBig.Text = "v$($i.InstalledVersion)"
     } else {
@@ -616,7 +789,7 @@ $refresh = {
 
 # ---- apply schedule change (elevated via UAC when needed) ----
 $btnApply.Add_Click({
-    $t = $timeBox.Text.Trim()
+    $t = ([string]$timeField.Tag.Value).Trim()
     if ($t -notmatch '^([01]?\d|2[0-3]):[0-5]\d$') {
         $lblSave.ForeColor = $bad
         $lblSave.Text = Str 'invalidTime'
@@ -652,10 +825,25 @@ $form.Add_Shown({ Update-Text; $timer.Start() })
 $form.Add_FormClosed({ $timer.Stop(); $timer.Dispose() })
 if ($Screenshot) {
     Update-Text
+    $form.Show(); [Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 800
     $bmp = New-Object Drawing.Bitmap($form.Width, $form.Height)
-    $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $hdc = $g.GetHdc()
+    [Win32]::PrintWindow($form.Handle, $hdc, 2) | Out-Null
+    $g.ReleaseHdc($hdc); $g.Dispose()
     $bmp.Save($Screenshot, [Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
+    $tp = New-TimePopup
+    $tp.Show(); [Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 200
+    $pb = New-Object Drawing.Bitmap($tp.Width, $tp.Height)
+    $g2 = [Drawing.Graphics]::FromImage($pb)
+    $hdc2 = $g2.GetHdc()
+    [Win32]::PrintWindow($tp.Handle, $hdc2, 2) | Out-Null
+    $g2.ReleaseHdc($hdc2); $g2.Dispose()
+    $pb.Save(($Screenshot -replace '\.png$', '-popup.png'), [Drawing.Imaging.ImageFormat]::Png)
+    $pb.Dispose(); $tp.Dispose()
     return
 }
 [void]$form.ShowDialog()
