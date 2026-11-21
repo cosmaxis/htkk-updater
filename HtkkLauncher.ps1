@@ -198,17 +198,17 @@ $L = @{
 }
 function Str([string]$k) { return $L[$script:Lang][$k] }
 
-# ---- palette ----
-$bg       = [Drawing.Color]::FromArgb(13, 15, 19)
-$card     = [Drawing.Color]::FromArgb(24, 27, 34)
-$cardEdge = [Drawing.Color]::FromArgb(38, 42, 52)
-$ink      = [Drawing.Color]::FromArgb(240, 242, 246)
-$dim      = [Drawing.Color]::FromArgb(140, 148, 162)
-$accent   = [Drawing.Color]::FromArgb(88, 101, 242)
-$accentHi = [Drawing.Color]::FromArgb(110, 122, 255)
-$good     = [Drawing.Color]::FromArgb(52, 211, 153)
-$warn     = [Drawing.Color]::FromArgb(251, 191, 36)
-$bad      = [Drawing.Color]::FromArgb(248, 113, 113)
+# ---- palette: Apple HIG dark mode ----
+$bg       = [Drawing.Color]::FromArgb(0, 0, 0)         # system background
+$card     = [Drawing.Color]::FromArgb(28, 28, 30)      # secondary system background #1C1C1E
+$cardEdge = [Drawing.Color]::FromArgb(56, 58, 60)      # separator #38383C
+$ink      = [Drawing.Color]::FromArgb(245, 245, 247)   # primary label
+$dim      = [Drawing.Color]::FromArgb(152, 152, 157)   # secondary label
+$accent   = [Drawing.Color]::FromArgb(10, 132, 255)    # system blue (dark)
+$accentHi = [Drawing.Color]::FromArgb(64, 156, 255)
+$good     = [Drawing.Color]::FromArgb(48, 209, 88)     # system green (dark)
+$warn     = [Drawing.Color]::FromArgb(255, 214, 10)    # system yellow (dark)
+$bad      = [Drawing.Color]::FromArgb(255, 69, 58)     # system red (dark)
 
 function New-RoundedPath([Drawing.Rectangle]$r, [int]$radius) {
     $p = New-Object Drawing.Drawing2D.GraphicsPath
@@ -225,7 +225,7 @@ $fontUi    = New-Object Drawing.Font('Segoe UI', 10)
 $fontSmall = New-Object Drawing.Font('Segoe UI', 8.5)
 $fontDim   = New-Object Drawing.Font('Segoe UI', 9)
 $fontTitle = New-Object Drawing.Font('Segoe UI Semibold', 15)
-$fontBig   = New-Object Drawing.Font('Segoe UI Semibold', 26)
+$fontBig   = New-Object Drawing.Font('Segoe UI Semilight', 27)
 $fontPill  = New-Object Drawing.Font('Segoe UI Semibold', 8.5)
 $fontBtn   = New-Object Drawing.Font('Segoe UI Semibold', 9.5)
 
@@ -247,14 +247,16 @@ $header.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
     $g = $e.Graphics
-    $dot = New-Object Drawing.Rectangle(28, 26, 34, 34)
-    $brush = New-Object Drawing.Drawing2D.LinearGradientBrush($dot, $accentHi, $accent, 45)
-    $g.FillEllipse($brush, $dot)
-    $brush.Dispose()
+    # squircle app-icon
+    $iconR = New-Object Drawing.Rectangle(28, 24, 38, 38)
+    $iconPath = New-RoundedPath $iconR 11
+    $brush = New-Object Drawing.Drawing2D.LinearGradientBrush($iconR, $accentHi, $accent, 45)
+    $g.FillPath($brush, $iconPath)
+    $brush.Dispose(); $iconPath.Dispose()
     $sf = New-Object Drawing.StringFormat
     $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
     $wb = New-Object Drawing.SolidBrush([Drawing.Color]::White)
-    $g.DrawString('H', $fontTitle, $wb, (New-Object Drawing.RectangleF(28, 26, 34, 34)), $sf)
+    $g.DrawString('H', $fontTitle, $wb, (New-Object Drawing.RectangleF(28, 24, 38, 38)), $sf)
     $wb.Dispose(); $sf.Dispose()
 })
 $form.Controls.Add($header)
@@ -316,7 +318,7 @@ $hero.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
     $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
-    $path = New-RoundedPath $rect 14
+    $path = New-RoundedPath $rect 16
     $b = New-Object Drawing.SolidBrush($card)
     $e.Graphics.FillPath($b, $path)
     $b.Dispose()
@@ -381,13 +383,18 @@ $detail.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
     $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
-    $path = New-RoundedPath $rect 14
+    $path = New-RoundedPath $rect 16
     $b = New-Object Drawing.SolidBrush($card)
     $e.Graphics.FillPath($b, $path)
     $b.Dispose()
     $pen = New-Object Drawing.Pen($cardEdge, 1)
     $e.Graphics.DrawPath($pen, $path)
     $pen.Dispose(); $path.Dispose()
+    # iOS grouped-list hairline separators between rows
+    $sp = New-Object Drawing.Pen([Drawing.Color]::FromArgb(70, 56, 58, 60), 1)
+    $e.Graphics.DrawLine($sp, 20, 56, ($s.Width - 20), 56)
+    $e.Graphics.DrawLine($sp, 20, 102, ($s.Width - 20), 102)
+    $sp.Dispose()
 })
 $form.Controls.Add($detail)
 
@@ -419,7 +426,7 @@ $settingsCard.Add_Paint({
     param($s, $e)
     $e.Graphics.SmoothingMode = 'AntiAlias'
     $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
-    $path = New-RoundedPath $rect 14
+    $path = New-RoundedPath $rect 16
     $b = New-Object Drawing.SolidBrush($card)
     $e.Graphics.FillPath($b, $path)
     $b.Dispose()
@@ -485,14 +492,14 @@ function New-UIButton([string]$text, [Drawing.Rectangle]$bounds, [bool]$primary)
         $e.Graphics.SmoothingMode = 'AntiAlias'
         $t = $s.Tag
         if ($t.Primary) {
-            $fill = if ($t.Pressed) { [Drawing.Color]::FromArgb(70, 82, 200) } elseif ($t.Hover) { $accentHi } else { $accent }
+            $fill = if ($t.Pressed) { [Drawing.Color]::FromArgb(8, 104, 200) } elseif ($t.Hover) { $accentHi } else { $accent }
             $fg = [Drawing.Color]::White
         } else {
             $fill = if ($t.Pressed) { [Drawing.Color]::FromArgb(34, 38, 48) } elseif ($t.Hover) { [Drawing.Color]::FromArgb(30, 34, 43) } else { $card }
             $fg = $ink
         }
         $rect = New-Object Drawing.Rectangle(0, 0, ($s.Width - 1), ($s.Height - 1))
-        $path = New-RoundedPath $rect 10
+        $path = New-RoundedPath $rect 12
         $b = New-Object Drawing.SolidBrush($fill)
         $e.Graphics.FillPath($b, $path)
         $b.Dispose()
