@@ -441,21 +441,13 @@ export component AppWindow inherits Window {
         width: 440px;
         height: 84px;
 
-        Rectangle { // app icon squircle
+        Image { // app logo
             x: 28px;
             y: 24px;
             width: 38px;
             height: 38px;
-            border-radius: 11px;
-            background: @linear-gradient(135deg, #409CFF 0%, #0A84FF 100%);
-            Text {
-                text: "H";
-                color: #FFFFFF;
-                font-size: 15pt;
-                font-weight: 600;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
+            source: @image-url("../assets/logo.png");
+            image-fit: contain;
         }
         Text {
             x: 74px;
