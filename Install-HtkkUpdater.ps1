@@ -15,10 +15,10 @@ $BinDir = Join-Path $InstallRoot 'bin'
 $SevenZipDir = Join-Path $InstallRoot '7z'
 $LogPath = Join-Path $InstallRoot 'install.log'
 $ScriptFiles = 'HtkkUpdater.psm1','Invoke-HtkkUpdate.ps1','HtkkLauncher.ps1','Install-HtkkUpdater.ps1'
-$LauncherVersion = '1.1.2'
+$LauncherVersion = '1.1.3'
 # Set at release time from the htkk-launcher.exe.sha256 published with the
 # v* GitHub release. Empty string = use the PowerShell launcher.
-$LauncherSha256 = '4ED560226A04EE92C4265E2B82BEC9C3A25DDE56DDDD0A71A7AE9EEEB77EEAC2'
+$LauncherSha256 = '45841A7EF2416B7AFCFF9E12956FD780C553CBCE839B16CF2EFDEAAEE709AC72'
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
@@ -191,8 +191,12 @@ foreach ($desktop in $desktops) {
         $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
     }
     $shortcut.WorkingDirectory = $BinDir
-    $exe = Join-Path $installDir 'Project\HTKK.exe'
-    if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
+    if ($launcherOk) {
+        $shortcut.IconLocation = "$launcherExe,0"
+    } else {
+        $exe = Join-Path $installDir 'Project\HTKK.exe'
+        if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
+    }
     $shortcut.Description = 'HTKK launcher with live update status'
     $shortcut.Save()
     Write-Step "Desktop shortcut '$ShortcutName' created at $shortcutPath"
