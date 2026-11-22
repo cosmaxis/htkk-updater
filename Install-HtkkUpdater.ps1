@@ -51,7 +51,9 @@ if ($Uninstall) {
     if (-not (Test-Administrator)) { throw 'Run elevated to uninstall.' }
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) $ShortcutName) -Force -ErrorAction SilentlyContinue
+    foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop'))) {
+        Remove-Item -LiteralPath (Join-Path $d $ShortcutName) -Force -ErrorAction SilentlyContinue
+    }
     Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host 'HTKK updater removed (the HTKK application itself was not touched).'
     return
@@ -176,23 +178,25 @@ if ($LauncherSha256) {
     Write-Step 'Warning: $LauncherSha256 is empty; using the PowerShell launcher'
 }
 
-$desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
-$shortcutPath = Join-Path $desktop $ShortcutName
+$desktops = @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop')) | Select-Object -Unique
 $shell = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut($shortcutPath)
-if ($launcherOk) {
-    $shortcut.TargetPath = $launcherExe
-    $shortcut.Arguments = ''
-} else {
-    $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
+foreach ($desktop in $desktops) {
+    $shortcutPath = Join-Path $desktop $ShortcutName
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    if ($launcherOk) {
+        $shortcut.TargetPath = $launcherExe
+        $shortcut.Arguments = ''
+    } else {
+        $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
+    }
+    $shortcut.WorkingDirectory = $BinDir
+    $exe = Join-Path $installDir 'Project\HTKK.exe'
+    if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
+    $shortcut.Description = 'HTKK launcher with live update status'
+    $shortcut.Save()
+    Write-Step "Desktop shortcut '$ShortcutName' created at $shortcutPath"
 }
-$shortcut.WorkingDirectory = $BinDir
-$exe = Join-Path $installDir 'Project\HTKK.exe'
-if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
-$shortcut.Description = 'HTKK launcher with live update status'
-$shortcut.Save()
-Write-Step "Desktop shortcut '$ShortcutName' created for all users"
 
 $migrated = Join-Path $env:LOCALAPPDATA 'HtkkUpdater\last-result.json'
 if (Test-Path -LiteralPath $migrated -PathType Leaf) {
