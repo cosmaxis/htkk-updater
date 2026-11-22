@@ -7,7 +7,9 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    runs-on:
+      group: Default
+      labels: [self-hosted, Windows, ARM64, mac-server]
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +42,9 @@ jobs:
         run: .\Test-HtkkUpdater.ps1
 
   launcher:
-    runs-on: windows-latest
+    runs-on:
+      group: Default
+      labels: [self-hosted, Windows, ARM64, mac-server]
     defaults:
       run:
         working-directory: launcher
