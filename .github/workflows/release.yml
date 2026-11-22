@@ -18,6 +18,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+
+      # Self-hosted Windows runners run the service as LocalSystem; Git Bash
+      # (C:\Program Files\Git\bin) is installed but not on the service PATH, so
+      # `shell: bash` steps like dtolnay/rust-toolchain fail with
+      # "bash: command not found". $GITHUB_PATH entries feed the runner's
+      # prepend-path list used to resolve step shells.
+      - name: Add Git Bash to PATH
+        shell: pwsh
+        run: |
+          $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
+          if (Test-Path -LiteralPath (Join-Path $gitBin 'bash.exe') -PathType Leaf) {
+            Add-Content -LiteralPath $env:GITHUB_PATH -Value $gitBin
+          } else {
+            Write-Warning "Git Bash not found at $gitBin"
+          }
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable-x86_64-pc-windows-msvc
