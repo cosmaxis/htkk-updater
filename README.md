@@ -26,7 +26,7 @@ That single command:
 
 - Downloads and verifies the official **7-Zip 26.06** (SHA-256 pinned) used to unpack HTKK releases — no other dependencies.
 - Installs **HTKK itself** if missing: discovers the latest release on the official [Cục Thuế page](https://www.gdt.gov.vn/wps/portal/home/hotrokekhai?1dmy&current=true&urile=wcm:path:/gdt+content/sa_gdt/htkk/soft_sup_declare), verifies the installer signature, installs silently.
-- Registers the daily **"HTKK Daily Updater"** scheduled task (09:00, SYSTEM) that checks for and installs newer signed releases.
+- Registers the daily **"HTKK Daily Updater"** scheduled task (09:00, as the installing user) that checks for and installs newer signed releases.
 - Drops an **HTKK launcher** on the desktop for all users — live status, settings, and manual update checks.
 
 ## The launcher

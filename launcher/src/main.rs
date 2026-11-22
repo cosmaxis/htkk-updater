@@ -34,7 +34,13 @@ fn build_status_data(info: &StatusInfo, lang: Lang) -> StatusData {
         .map(|v| fmt(lang, "latest", &[v]))
         .unwrap_or_default();
     let task_text = match &info.task {
-        TaskLookup::Error(e) => fmt(lang, "unavailable", &[e]),
+        TaskLookup::Error(e) => {
+            if e.contains("0x80070005") {
+                tr(lang, "taskAccessDenied").to_string()
+            } else {
+                fmt(lang, "unavailable", &[e])
+            }
+        }
         TaskLookup::NotFound => tr(lang, "taskMissing").to_string(),
         TaskLookup::Found { state, .. } => fmt(
             lang,
