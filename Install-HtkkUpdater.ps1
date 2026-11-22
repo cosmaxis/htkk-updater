@@ -18,7 +18,7 @@ $ScriptFiles = 'HtkkUpdater.psm1','Invoke-HtkkUpdate.ps1','HtkkLauncher.ps1','In
 $LauncherVersion = '1.1.0'
 # Set at release time from the htkk-launcher.exe.sha256 published with the
 # v* GitHub release. Empty string = use the PowerShell launcher.
-$LauncherSha256 = ''
+$LauncherSha256 = '83EF8480530C9F56FB690C6AC5A1CE23DA4F30E9057F5965B06F0C74CB9F1D8A'
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
