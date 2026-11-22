@@ -31,7 +31,7 @@ That single command:
 
 ## The launcher
 
-A borderless, rounded, dark desktop app — no Windows chrome:
+A **native Rust + Slint** desktop app — ~10 MB single exe, ~175 ms cold start, per-monitor DPI-aware, keyboard- and screen-reader-accessible, with native rounded corners on Windows 11. The original PowerShell launcher (`HtkkLauncher.ps1`) remains as a fallback when the native exe isn't pinned/available.
 
 - **Live status** — installed version, latest release, task state, last check, last update result
 - **EN ⇄ VI** — single-click language switch, remembered per user
@@ -70,7 +70,8 @@ Status values: `Updated`, `Current`, `RebootRequired`, `Error` (with stage + mes
 | `Install-HtkkUpdater.ps1` | Single-click installer — scripts, 7-Zip, first HTKK install, task, desktop shortcut. `-Uninstall` removes the updater (not HTKK). |
 | `Invoke-HtkkUpdate.ps1` | One update run; used by the scheduled task and the launcher's update button. |
 | `HtkkUpdater.psm1` | Core module: release discovery, download, extraction, backup/verify, install. |
-| `HtkkLauncher.ps1` | Desktop launcher: live status window, language toggle, schedule settings. |
+| `HtkkLauncher.ps1` | Fallback desktop launcher (PowerShell/WinForms) used when the native exe isn't available. |
+| `launcher/` | Native launcher: Rust + Slint source, unit tests, app manifest and icon. |
 | `Test-HtkkUpdater.ps1` | Offline test suite (20 cases) — no HTKK install or network needed. |
 
 ## Development
@@ -86,9 +87,22 @@ CI runs the same suite plus a syntax check and a UTF-8 BOM check on every push �
 
 > **Note:** `HtkkLauncher.ps1` must keep its UTF-8 BOM — without it, Windows PowerShell 5.1 misreads the Vietnamese strings. CI enforces this.
 
+### Native launcher
+
+Prerequisites: Rust stable (`rustup`); the MSVC toolchain is recommended (CI builds with `stable-x86_64-pc-windows-msvc`; the GNU toolchain also works if `dlltool`/`windres` are on `PATH`).
+
+```powershell
+cd launcher
+cargo test
+cargo build --release
+.\target\release\htkk-launcher.exe --screenshot ..\docs\screenshot.png         # + -popup.png; add `--lang vi` for Vietnamese
+```
+
+Release process: bump `version` in `launcher/Cargo.toml`, tag `vX.Y.Z` — CI publishes `htkk-launcher.exe` + `htkk-launcher.exe.sha256` to the release — then set `$LauncherVersion`/`$LauncherSha256` in `Install-HtkkUpdater.ps1` so new installs get the native launcher.
+
 ## Contributing
 
-Issues and pull requests welcome. Please keep changes dependency-free (stock PowerShell + WinForms) and make sure `Test-HtkkUpdater.ps1` stays green.
+Issues and pull requests welcome. Please keep changes dependency-free — stock PowerShell for scripts; Rust + Slint for the launcher — and make sure `Test-HtkkUpdater.ps1` stays green.
 
 ## Uninstall
 
@@ -101,3 +115,7 @@ Removes the scheduled task, desktop shortcut, and `%ProgramData%\HtkkUpdater`. H
 ## License
 
 [MIT](LICENSE) © 2026 Cosmaxis
+
+The launcher UI is built with [Slint](https://slint.dev) under the Slint Royalty-free Desktop License.
+
+<a href="https://slint.dev"><img src="https://slint.dev/logo/MadeWithSlint-logo-whitebg.png" alt="Made with Slint" height="32"></a>

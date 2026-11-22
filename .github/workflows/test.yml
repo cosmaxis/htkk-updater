@@ -38,3 +38,30 @@ jobs:
       - name: Run offline test suite
         shell: powershell
         run: .\Test-HtkkUpdater.ps1
+
+  launcher:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test
+
+      - name: cargo build --release
+        env:
+          HTKK_REQUIRE_RESOURCES: "1"
+        run: cargo build --release

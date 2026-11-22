@@ -1,0 +1,42 @@
+[package]
+name = "htkk-launcher"
+version = "1.1.0"
+edition = "2021"
+build = "build.rs"
+publish = false
+
+[dependencies]
+slint = { version = "=1.18.1", features = ["compat-1-2", "raw-window-handle-06"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+roxmltree = "=0.21.2"
+png = "=0.18.0"
+raw-window-handle = "=0.6.2"
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_TaskScheduler",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_System_Variant",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+embed-resource = "=3.0.12"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = 3

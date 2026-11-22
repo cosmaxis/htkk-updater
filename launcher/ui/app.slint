@@ -1,0 +1,899 @@
+// HTKK launcher — Apple-HIG dark UI, ported from HtkkLauncher.ps1.
+
+export struct StatusData {
+    version_text: string,
+    latest_text: string,
+    task_text: string,
+    lastrun_text: string,
+    result_text: string,
+    result_is_error: bool,
+    subtitle_text: string,
+    pill_text: string,
+    pill_kind: int, // 0 grey, 1 green, 2 warn, 3 red
+    task_time: string,
+}
+
+export struct Txt {
+    installed: string,
+    task: string,
+    lastrun: string,
+    updresult: string,
+    settings: string,
+    timelabel: string,
+    apply: string,
+    open: string,
+    check: string,
+    title: string,
+    footer: string,
+    langs: string,
+    minimize: string,
+    close: string,
+    picktime: string,
+    openacc: string,
+    checkacc: string,
+    timefield: string,
+}
+
+component Card inherits Rectangle {
+    background: #1C1C1E;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: #38383C;
+}
+
+component ChromeBtn inherits Rectangle {
+    in property <bool> is_close;
+    in property <string> a11y;
+    callback clicked;
+    callback esc();
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: a11y;
+    background: ta.has-hover ? (is_close ? #FF453A : #3A3A3C) : transparent;
+    animate background { duration: 150ms; }
+
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clicked();
+                accept
+            } else if (e.text == Key.Escape) {
+                root.esc();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+    // focus ring
+    Rectangle {
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        x: -2px;
+        y: -2px;
+        border-radius: 9px;
+        border-width: 2px;
+        border-color: fs.has-focus ? #0A84FF : transparent;
+    }
+    if !is_close: Rectangle {
+        width: 10px;
+        height: 1.6px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 1px;
+        background: #F5F5F7;
+    }
+    if is_close: Path {
+        x: 8px;
+        y: 8px;
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: #F5F5F7;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        MoveTo {
+            x: 1;
+            y: 1;
+        }
+        LineTo {
+            x: 9;
+            y: 9;
+        }
+    }
+    if is_close: Path {
+        x: 8px;
+        y: 8px;
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: #F5F5F7;
+        stroke-width: 1.8px;
+        stroke-line-cap: round;
+        MoveTo {
+            x: 9;
+            y: 1;
+        }
+        LineTo {
+            x: 1;
+            y: 9;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component HButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    in property <string> a11y;
+    callback clicked;
+    callback esc();
+    height: 46px;
+    border-radius: 12px;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: a11y != "" ? a11y : text;
+    accessible-enabled: enabled;
+    opacity: enabled ? 1 : 0.45;
+    property <bool> hov: enabled && ta.has-hover;
+    property <bool> prs: enabled && ta.pressed;
+    background: primary ? (prs ? #0868C8 : (hov ? #409CFF : #0A84FF)) : (prs ? #222630 : (hov ? #1E222B : #1C1C1E));
+    border-width: primary ? 0 : 1px;
+    border-color: #38383C;
+    animate background { duration: 150ms; }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                if (root.enabled) {
+                    root.clicked();
+                }
+                accept
+            } else if (e.text == Key.Escape) {
+                root.esc();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+    Rectangle {
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        x: -2px;
+        y: -2px;
+        border-radius: 14px;
+        border-width: 2px;
+        border-color: fs.has-focus ? #0A84FF : transparent;
+    }
+    Text {
+        text: root.text;
+        color: primary ? #FFFFFF : #F5F5F7;
+        font-size: 9.5pt;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component Pill inherits Rectangle {
+    in property <int> kind;
+    in property <string> text;
+    in property <bool> pulse;
+    property <color> c: kind == 1 ? #30D158 : kind == 2 ? #FFD60A : kind == 3 ? #FF453A : #98989D;
+    property <bool> blink;
+    width: max(104px, t.preferred-width + 34px);
+    height: 30px;
+    border-radius: 15px;
+    background: c.with-alpha(0.16);
+    border-width: 1px;
+    border-color: c.with-alpha(0.55);
+    Rectangle {
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        x: 12px;
+        y: (parent.height - self.height) / 2;
+        background: c;
+        opacity: root.pulse ? (root.blink ? 0.35 : 1.0) : 1.0;
+        animate opacity { duration: 400ms; }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.pulse;
+        triggered => {
+            root.blink = !root.blink;
+        }
+    }
+    t := Text {
+        text: root.text;
+        color: c;
+        font-size: 8.5pt;
+        font-weight: 600;
+        x: 26px;
+        width: parent.width - 30px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component TimeField inherits Rectangle {
+    in property <string> value;
+    in property <string> a11y;
+    callback clicked;
+    callback esc();
+    width: 132px;
+    height: 30px;
+    border-radius: 9px;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: a11y;
+    background: ta.has-hover ? #363638 : #2C2C2E;
+    border-width: 1px;
+    border-color: #38383C;
+    animate background { duration: 150ms; }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clicked();
+                accept
+            } else if (e.text == Key.Escape) {
+                root.esc();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+    Rectangle {
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        x: -2px;
+        y: -2px;
+        border-radius: 11px;
+        border-width: 2px;
+        border-color: fs.has-focus ? #0A84FF : transparent;
+    }
+    Text {
+        text: root.value;
+        color: #F5F5F7;
+        font-size: 10pt;
+        x: 12px;
+        width: parent.width - 40px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Path {
+        x: parent.width - 22px;
+        y: (parent.height - 6px) / 2;
+        width: 10px;
+        height: 6px;
+        viewbox-width: 10;
+        viewbox-height: 6;
+        stroke: #98989D;
+        stroke-width: 1.8px;
+        stroke-line-join: round;
+        stroke-line-cap: round;
+        MoveTo {
+            x: 1;
+            y: 1;
+        }
+        LineTo {
+            x: 5;
+            y: 5;
+        }
+        LineTo {
+            x: 9;
+            y: 1;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component LangSeg inherits Rectangle {
+    in property <bool> en;
+    in property <string> a11y;
+    callback toggled;
+    callback esc();
+    width: 72px;
+    height: 28px;
+    border-radius: 14px;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: a11y;
+    background: #1C1C1E;
+    border-width: 1px;
+    border-color: #38383C;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.toggled();
+                accept
+            } else if (e.text == Key.Escape) {
+                root.esc();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+    Rectangle {
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        x: -2px;
+        y: -2px;
+        border-radius: 16px;
+        border-width: 2px;
+        border-color: fs.has-focus ? #0A84FF : transparent;
+    }
+    Rectangle { // sliding segment, inset 2px inside the track
+        width: parent.width / 2 - 2px;
+        height: parent.height - 4px;
+        y: 2px;
+        x: root.en ? 2px : parent.width / 2;
+        border-radius: 12px;
+        background: #0A84FF;
+        animate x { duration: 150ms; }
+    }
+    Text {
+        text: "EN";
+        x: 0;
+        width: parent.width / 2;
+        height: parent.height;
+        color: root.en ? #FFFFFF : #98989D;
+        font-size: 8.5pt;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Text {
+        text: "VI";
+        x: parent.width / 2;
+        width: parent.width / 2;
+        height: parent.height;
+        color: root.en ? #98989D : #FFFFFF;
+        font-size: 8.5pt;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled();
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "HTKK Updater";
+    no-frame: true;
+    background: #000000;
+    default-font-family: "Segoe UI";
+    preferred-width: 440px;
+    preferred-height: 640px;
+    min-width: 440px;
+    max-width: 440px;
+    min-height: 640px;
+    max-height: 640px;
+
+    in-out property <StatusData> st;
+    in-out property <Txt> txt;
+    in-out property <bool> lang_en: true;
+    in-out property <string> picked_time: "09:00";
+    in-out property <string> save_text: "";
+    in-out property <int> save_kind: 0; // 0 dim, 1 green, 2 red
+    in-out property <bool> saving: false;
+    in-out property <string> notice_text: "";
+    in-out property <int> notice_kind: 0;
+    in-out property <bool> picker_open: false;
+    in-out property <int> picker_hover: -1;
+    in-out property <bool> time_adopted: false;
+
+    callback open_htkk();
+    callback check_updates();
+    callback apply_time(string);
+    callback set_lang(bool);
+    callback ui_minimize();
+    callback ui_close();
+    callback ui_drag();
+
+    property <color> save_color: save_kind == 1 ? #30D158 : save_kind == 2 ? #FF453A : #98989D;
+
+    // window-drag surface (below all content)
+    drag_ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.left && e.kind == PointerEventKind.down) {
+                root.ui_drag();
+            }
+        }
+    }
+
+    // ---- header ----
+    header := Rectangle {
+        x: 0;
+        y: 0;
+        width: 440px;
+        height: 84px;
+
+        Rectangle { // app icon squircle
+            x: 28px;
+            y: 24px;
+            width: 38px;
+            height: 38px;
+            border-radius: 11px;
+            background: @linear-gradient(135deg, #409CFF 0%, #0A84FF 100%);
+            Text {
+                text: "H";
+                color: #FFFFFF;
+                font-size: 15pt;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            x: 74px;
+            y: 24px;
+            width: 260px;
+            height: 26px;
+            text: root.txt.title;
+            color: #F5F5F7;
+            font-size: 15pt;
+            font-weight: 600;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 74px;
+            y: 50px;
+            width: 270px;
+            height: 18px;
+            text: root.st.subtitle_text;
+            color: #98989D;
+            font-size: 9pt;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+        LangSeg {
+            x: 344px; // right edge aligned with the cards (440 - 24 - 72)
+            y: 46px; // bottom (74) lines up with the subtitle row
+            en: root.lang_en;
+            a11y: root.txt.langs;
+            toggled => {
+                root.set_lang(!root.lang_en);
+            }
+            esc => {
+                root.ui_close();
+            }
+        }
+        ChromeBtn {
+            x: 372px;
+            y: 10px;
+            a11y: root.txt.minimize;
+            clicked => {
+                root.ui_minimize();
+            }
+            esc => {
+                root.ui_close();
+            }
+        }
+        ChromeBtn {
+            x: 404px;
+            y: 10px;
+            is_close: true;
+            a11y: root.txt.close;
+            clicked => {
+                root.ui_close();
+            }
+            esc => {
+                root.ui_close();
+            }
+        }
+    }
+
+    // ---- hero card ----
+    Card {
+        x: 24px;
+        y: 96px;
+        width: 392px;
+        height: 128px;
+
+        Text {
+            x: 20px;
+            y: 16px;
+            width: 240px;
+            height: 16px;
+            text: root.txt.installed;
+            color: #98989D;
+            font-size: 8.5pt;
+            font-weight: 600;
+            overflow: elide;
+        }
+        Text {
+            x: 18px;
+            y: 32px;
+            width: 260px;
+            height: 52px;
+            text: root.st.version_text;
+            color: #F5F5F7;
+            font-size: 27pt;
+            font-weight: 300;
+            overflow: elide;
+        }
+        Text {
+            x: 20px;
+            y: 92px;
+            width: 350px;
+            height: 18px;
+            text: root.st.latest_text;
+            color: #98989D;
+            font-size: 9pt;
+            overflow: elide;
+        }
+        Pill {
+            x: parent.width - self.width - 20px;
+            y: 20px;
+            kind: root.st.pill_kind;
+            text: root.st.pill_text;
+            pulse: root.st.pill_kind == 2;
+        }
+    }
+
+    // ---- detail card ----
+    Card {
+        x: 24px;
+        y: 240px;
+        width: 392px;
+        height: 168px;
+
+        Text {
+            x: 20px;
+            y: 16px;
+            width: 170px;
+            height: 16px;
+            text: root.txt.task;
+            color: #98989D;
+            font-size: 8.5pt;
+            overflow: elide;
+        }
+        Text {
+            x: 20px;
+            y: 33px;
+            width: 352px;
+            height: 20px;
+            text: root.st.task_text;
+            color: #F5F5F7;
+            font-size: 10pt;
+            overflow: elide;
+        }
+        Rectangle {
+            x: 20px;
+            y: 56px;
+            width: 352px;
+            height: 1px;
+            background: #38383C;
+            opacity: 0.7;
+        }
+
+        Text {
+            x: 20px;
+            y: 62px;
+            width: 170px;
+            height: 16px;
+            text: root.txt.lastrun;
+            color: #98989D;
+            font-size: 8.5pt;
+            overflow: elide;
+        }
+        Text {
+            x: 20px;
+            y: 79px;
+            width: 352px;
+            height: 20px;
+            text: root.st.lastrun_text;
+            color: #F5F5F7;
+            font-size: 10pt;
+            overflow: elide;
+        }
+        Rectangle {
+            x: 20px;
+            y: 102px;
+            width: 352px;
+            height: 1px;
+            background: #38383C;
+            opacity: 0.7;
+        }
+
+        Text {
+            x: 20px;
+            y: 108px;
+            width: 170px;
+            height: 16px;
+            text: root.txt.updresult;
+            color: #98989D;
+            font-size: 8.5pt;
+            overflow: elide;
+        }
+        Text {
+            x: 20px;
+            y: 125px;
+            width: 352px;
+            height: 36px;
+            text: root.st.result_text;
+            color: root.st.result_is_error ? #FF453A : #F5F5F7;
+            font-size: 10pt;
+            wrap: word-wrap;
+            overflow: elide;
+        }
+    }
+
+    // ---- settings card ----
+    Card {
+        x: 24px;
+        y: 424px;
+        width: 392px;
+        height: 112px;
+
+        Text {
+            x: 20px;
+            y: 12px;
+            width: 200px;
+            height: 16px;
+            text: root.txt.settings;
+            color: #98989D;
+            font-size: 8.5pt;
+            overflow: elide;
+        }
+        Text {
+            x: 20px;
+            y: 32px;
+            width: 220px;
+            height: 20px;
+            text: root.txt.timelabel;
+            color: #F5F5F7;
+            font-size: 10pt;
+            overflow: elide;
+        }
+        TimeField {
+            x: 20px;
+            y: 56px;
+            value: root.picked_time;
+            a11y: root.txt.timefield;
+            clicked => {
+                root.picker_open = !root.picker_open;
+            }
+            esc => {
+                root.ui_close();
+            }
+        }
+        HButton {
+            x: 266px;
+            y: 48px;
+            width: 106px;
+            height: 30px;
+            text: root.txt.apply;
+            enabled: !root.saving && root.picked_time != root.st.task_time;
+            clicked => {
+                root.apply_time(root.picked_time);
+            }
+            esc => {
+                root.ui_close();
+            }
+        }
+        Text {
+            x: 20px;
+            y: 88px;
+            width: 352px;
+            height: 16px;
+            text: root.save_text;
+            color: root.save_color;
+            font-size: 9pt;
+            overflow: elide;
+        }
+    }
+
+    // ---- action buttons ----
+    HButton {
+        x: 24px;
+        y: 556px;
+        width: 188px;
+        primary: true;
+        text: root.txt.open;
+        a11y: root.txt.openacc;
+        clicked => {
+            root.open_htkk();
+        }
+        esc => {
+            root.ui_close();
+        }
+    }
+    HButton {
+        x: 228px;
+        y: 556px;
+        width: 188px;
+        text: root.txt.check;
+        a11y: root.txt.checkacc;
+        clicked => {
+            root.check_updates();
+        }
+        esc => {
+            root.ui_close();
+        }
+    }
+
+    Text {
+        x: 0;
+        y: 618px;
+        width: 440px;
+        height: 20px;
+        text: root.txt.footer;
+        color: #5A606E;
+        font-size: 8.5pt;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // ---- toast / notice ----
+    if root.notice_text != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 514px;
+        width: min(392px, notice_t.preferred-width + 32px);
+        height: 34px;
+        border-radius: 10px;
+        background: #2C2C2E;
+        border-width: 1px;
+        border-color: root.notice_kind == 2 ? #FF453A : #38383C;
+        accessible-role: text;
+        accessible-label: root.notice_text;
+        notice_t := Text {
+            text: root.notice_text;
+            color: root.notice_kind == 2 ? #FF453A : #F5F5F7;
+            font-size: 9.5pt;
+            width: parent.width - 24px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // ---- time picker overlay ----
+    if root.picker_open: Rectangle {
+        width: 440px;
+        height: 640px;
+        background: #00000088;
+        TouchArea {
+            clicked => {
+                root.picker_open = false;
+            }
+        }
+        picker_fs := FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape) {
+                    root.picker_open = false;
+                    accept
+                } else if (e.text == Key.Return || e.text == " ") {
+                    if (root.picker_hover >= 0) {
+                        root.picked_time = (root.picker_hover < 10 ? "0" : "") + root.picker_hover + ":00";
+                        root.picker_open = false;
+                    }
+                    accept
+                } else if (e.text == Key.UpArrow) {
+                    root.picker_hover = Math.max(0, root.picker_hover < 0 ? 0 : root.picker_hover - 1);
+                    accept
+                } else if (e.text == Key.DownArrow) {
+                    root.picker_hover = Math.min(23, root.picker_hover < 0 ? 23 : root.picker_hover + 1);
+                    accept
+                } else if (e.text == Key.LeftArrow) {
+                    root.picker_hover = root.picker_hover < 0 ? 0 : Math.mod(root.picker_hover + 12, 24);
+                    accept
+                } else if (e.text == Key.RightArrow) {
+                    root.picker_hover = root.picker_hover < 0 ? 12 : Math.mod(root.picker_hover + 12, 24);
+                    accept
+                } else {
+                    reject
+                }
+            }
+        }
+        pk_focus_timer := Timer {
+            interval: 20ms;
+            running: true;
+            triggered => {
+                picker_fs.focus();
+                pk_focus_timer.running = false;
+            }
+        }
+        Rectangle { // picker card
+            x: 44px;
+            y: 110px;
+            width: 244px;
+            height: 400px;
+            border-radius: 12px;
+            background: #242426;
+            border-width: 1px;
+            border-color: #38383C;
+
+            Text {
+                x: 12px;
+                y: 6px;
+                width: parent.width - 24px;
+                height: 20px;
+                text: root.txt.picktime;
+                color: #98989D;
+                font-size: 8.5pt;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            for hour in 24: Rectangle {
+                property <string> label: (hour < 10 ? "0" : "") + hour + ":00";
+                x: 8px + Math.floor(hour / 12) * 112px;
+                y: 30px + Math.mod(hour, 12) * 30px;
+                width: 104px;
+                height: 26px;
+                border-radius: 8px;
+                background: label == root.picked_time ? #0A84FF : (cth.has-hover || root.picker_hover == hour ? #38383A : transparent);
+                animate background { duration: 100ms; }
+                Text {
+                    text: parent.label;
+                    color: parent.label == root.picked_time ? #FFFFFF : #F5F5F7;
+                    font-size: 10pt;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                cth := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.picked_time = parent.label;
+                        root.picker_open = false;
+                        root.picker_hover = -1;
+                    }
+                }
+            }
+        }
+    }
+
+    // initial focus so Esc/Tab work before the first click
+    boot_timer := Timer {
+        interval: 10ms;
+        running: true;
+        triggered => {
+            hdr_fs.focus();
+            boot_timer.running = false;
+        }
+    }
+    hdr_fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                root.ui_close();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+}

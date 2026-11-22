@@ -15,6 +15,10 @@ $BinDir = Join-Path $InstallRoot 'bin'
 $SevenZipDir = Join-Path $InstallRoot '7z'
 $LogPath = Join-Path $InstallRoot 'install.log'
 $ScriptFiles = 'HtkkUpdater.psm1','Invoke-HtkkUpdate.ps1','HtkkLauncher.ps1','Install-HtkkUpdater.ps1'
+$LauncherVersion = '1.1.0'
+# Set at release time from the htkk-launcher.exe.sha256 published with the
+# v* GitHub release. Empty string = use the PowerShell launcher.
+$LauncherSha256 = ''
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
@@ -46,6 +50,7 @@ function Get-HtkkInstallDir {
 if ($Uninstall) {
     if (-not (Test-Administrator)) { throw 'Run elevated to uninstall.' }
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) $ShortcutName) -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host 'HTKK updater removed (the HTKK application itself was not touched).'
@@ -148,12 +153,36 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccou
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Description 'Checks the official HTKK page daily and updates the installed application to the latest signed release.' -Force | Out-Null
 Write-Step "Scheduled task '$TaskName' registered (daily 09:00, SYSTEM)"
 
+# Native launcher: only enabled once $LauncherSha256 is pinned at release time.
+$launcherExe = Join-Path $BinDir 'htkk-launcher.exe'
+$launcherOk = $false
+if ($LauncherSha256) {
+    try {
+        Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/htkk-launcher.exe"
+        Invoke-WebRequest -Uri $launcherUrl -UseBasicParsing -TimeoutSec 60 -OutFile $launcherExe
+        Assert-FileHash -Path $launcherExe -Sha256 $LauncherSha256 -Name 'htkk-launcher.exe'
+        $launcherOk = $true
+        Write-Step "Native launcher $LauncherVersion downloaded and verified"
+    } catch {
+        Remove-Item -LiteralPath $launcherExe -Force -ErrorAction SilentlyContinue
+        Write-Step "Warning: native launcher unavailable ($($_.Exception.Message)); using the PowerShell launcher"
+    }
+} else {
+    Write-Step 'Warning: $LauncherSha256 is empty; using the PowerShell launcher'
+}
+
 $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $shortcutPath = Join-Path $desktop $ShortcutName
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
+if ($launcherOk) {
+    $shortcut.TargetPath = $launcherExe
+    $shortcut.Arguments = ''
+} else {
+    $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
+}
 $shortcut.WorkingDirectory = $BinDir
 $exe = Join-Path $installDir 'Project\HTKK.exe'
 if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
