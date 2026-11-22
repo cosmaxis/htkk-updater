@@ -474,7 +474,17 @@ fn main() -> Result<(), slint::PlatformError> {
             let tx = tx.clone();
             let msgs = msgs.clone();
             std::thread::spawn(move || {
-                let outcome = task::run_now();
+                let mut outcome = task::run_now();
+                // hardened builds deny unprivileged task access -> elevate once
+                if matches!(&outcome, Err(task::RunError::Other(e)) if e.contains("0x80070005")) {
+                    outcome = match actions::run_task_elevated() {
+                        actions::ScheduleResult::Applied(_) => Ok(()),
+                        actions::ScheduleResult::Cancelled => {
+                            Err(task::RunError::Other("cancelled".into()))
+                        }
+                        actions::ScheduleResult::Failed(e) => Err(task::RunError::Other(e)),
+                    };
+                }
                 let msg = match &outcome {
                     Ok(()) => None,
                     Err(task::RunError::NotFound) => Some(UiMsg {
@@ -490,6 +500,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     Err(task::RunError::Running) => Some(UiMsg {
                         kind: 2,
                         key: "alreadyRun",
+                        args: vec![],
+                    }),
+                    Err(task::RunError::Other(e)) if e == "cancelled" => Some(UiMsg {
+                        kind: 0,
+                        key: "cancelled",
                         args: vec![],
                     }),
                     Err(task::RunError::Other(e)) => Some(UiMsg {

@@ -102,3 +102,40 @@ pub fn set_task_time(time: &str) -> ScheduleResult {
         }
     }
 }
+
+/// Start the daily updater via an elevated schtasks.exe (one UAC prompt).
+/// Hardened Windows builds deny unprivileged read/run rights on scheduled
+/// tasks, so this is the fallback when task::run_now() gets 0x80070005.
+/// schtasks /run returns immediately — no wait needed.
+pub fn run_task_elevated() -> ScheduleResult {
+    let args = format!("/run /tn \"{TASK_NAME}\"");
+    let args_w = wide(&args);
+    let file_w = wide("schtasks.exe");
+    let verb_w = wide("runas");
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        hwnd: HWND::default(),
+        lpVerb: PCWSTR(verb_w.as_ptr()),
+        lpFile: PCWSTR(file_w.as_ptr()),
+        lpParameters: PCWSTR(args_w.as_ptr()),
+        lpDirectory: PCWSTR::null(),
+        nShow: SW_NORMAL.0,
+        ..Default::default()
+    };
+    unsafe {
+        if let Err(e) = ShellExecuteExW(&mut info) {
+            const ERROR_CANCELLED: u32 = 1223;
+            if e.code() == HRESULT::from_win32(ERROR_CANCELLED)
+                || GetLastError().0 == ERROR_CANCELLED
+            {
+                return ScheduleResult::Cancelled;
+            }
+            return ScheduleResult::Failed(e.to_string());
+        }
+        if !info.hProcess.is_invalid() {
+            let _ = CloseHandle(info.hProcess);
+        }
+        ScheduleResult::Applied(String::new())
+    }
+}
