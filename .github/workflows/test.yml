@@ -68,16 +68,28 @@ jobs:
 
       # The fleet has no C++ toolchain — provision MSVC Build Tools so
       # windows-msvc targets can link (rustc locates them via vswhere).
-      # winget install is a fast no-op once present.
+      # winget is unavailable in the runner's LocalSystem context, so use
+      # the official bootstrapper. No-op once installed.
       - name: Ensure MSVC Build Tools
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $found = (Test-Path $vswhere) -and [bool](& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
           if ($found) { Write-Host 'MSVC Build Tools already installed'; exit 0 }
-          Write-Host 'Installing Visual Studio 2022 Build Tools (C++ workload)...'
-          winget install --id Microsoft.VisualStudio.2022.BuildTools --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools")) { throw 'Build Tools install failed' }
+          Write-Host 'Downloading VS 2022 Build Tools bootstrapper...'
+          $bt = Join-Path $env:TEMP 'vs_buildtools.exe'
+          $ok = $false
+          foreach ($i in 1..5) {
+            try {
+              Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vs_buildtools.exe' -OutFile $bt -TimeoutSec 120 -UseBasicParsing
+              $ok = $true; break
+            } catch { Write-Warning "download attempt $i failed: $($_.Exception.Message)"; Start-Sleep 10 }
+          }
+          if (-not $ok) { throw 'could not download vs_buildtools.exe' }
+          & $bt --passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended | Out-Host
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "vs_buildtools exit $LASTEXITCODE" }
+          $found = [bool](& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+          if (-not $found) { throw 'Build Tools install did not register VCTools' }
 
       - uses: dtolnay/rust-toolchain@stable
         with:
