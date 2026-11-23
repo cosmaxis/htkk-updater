@@ -218,17 +218,17 @@ fn snapshot(ui: &AppWindow) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel
 mod win {
     use slint::ComponentHandle;
     use windows::core::{w, PCWSTR};
-    use windows::Win32::Foundation::{CloseHandle, GetLastError, HWND, LPARAM, WPARAM};
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, HWND, LPARAM, RECT, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWINDOWATTRIBUTE};
     use windows::Win32::System::Console::{AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS};
     use windows::Win32::System::Threading::CreateMutexW;
     use windows::Win32::UI::HiDpi::{
-        SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
     use windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, IsIconic, SendMessageW, SetForegroundWindow, ShowWindow, SW_RESTORE,
-        WM_NCLBUTTONDOWN,
+        FindWindowW, GetWindowRect, IsIconic, SendMessageW, SetForegroundWindow, SetWindowPos,
+        ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE, WM_NCLBUTTONDOWN,
     };
 
     /// Single-instance mutex. Returns false if another copy is running
@@ -298,6 +298,34 @@ mod win {
             let _ = ReleaseCapture();
             let _ = SendMessageW(hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(2)), Some(LPARAM(0)));
             // HTCAPTION
+        }
+    }
+
+    /// Reconcile the physical window size with `logical * scale`, where scale
+    /// comes from the window's actual DPI (GetDpiForWindow/96) — the same
+    /// source the renderer uses. Windows can create the HWND under a stale
+    /// DPI context, leaving a 440x640-physical window whose content renders
+    /// at 1.5x — clipped UI, dead clicks. Force the size.
+    pub fn ensure_size(hwnd: HWND) {
+        unsafe {
+            let mut r = std::mem::zeroed::<RECT>();
+            if GetWindowRect(hwnd, &mut r).is_err() {
+                return;
+            }
+            let scale = f64::from(GetDpiForWindow(hwnd).max(96)) / 96.0;
+            let want_w = (440.0 * scale).round() as i32;
+            let want_h = (640.0 * scale).round() as i32;
+            if ((r.right - r.left) - want_w).abs() > 4 || ((r.bottom - r.top) - want_h).abs() > 4 {
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    r.left,
+                    r.top,
+                    want_w,
+                    want_h,
+                    SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+            }
         }
     }
 
@@ -386,6 +414,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         if !ui.get_time_adopted() {
                             ui.set_picked_time(data.task_time.clone());
                             ui.set_time_adopted(true);
+                        }
+                        #[cfg(windows)]
+                        if let Some(h) = win::hwnd(&ui) {
+                            win::ensure_size(h);
                         }
                         ui.set_st(data);
                     });
@@ -478,7 +510,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 // hardened builds deny unprivileged task access -> elevate once
                 if matches!(&outcome, Err(task::RunError::Other(e)) if e.contains("0x80070005")) {
                     outcome = match actions::run_task_elevated() {
-                        actions::ScheduleResult::Applied(_) => Ok(()),
+                        actions::ScheduleResult::Applied => Ok(()),
                         actions::ScheduleResult::Cancelled => {
                             Err(task::RunError::Other("cancelled".into()))
                         }
@@ -556,19 +588,27 @@ fn main() -> Result<(), slint::PlatformError> {
             let tx = tx.clone();
             let msgs = msgs.clone();
             std::thread::spawn(move || {
-                let result = actions::set_task_time(&norm);
-                let msg = match result {
-                    actions::ScheduleResult::Applied(t2) => UiMsg {
+                let mut r = task::set_trigger_time(&norm);
+                // hardened builds deny unprivileged task writes -> elevate once
+                if matches!(&r, Err(e) if e.contains("0x80070005")) {
+                    r = match actions::set_task_time_elevated(&norm) {
+                        actions::ScheduleResult::Applied => Ok(()),
+                        actions::ScheduleResult::Cancelled => Err("cancelled".into()),
+                        actions::ScheduleResult::Failed(e) => Err(e),
+                    };
+                }
+                let msg = match r {
+                    Ok(()) => UiMsg {
                         kind: 1,
                         key: "saved",
-                        args: vec![t2],
+                        args: vec![norm.clone()],
                     },
-                    actions::ScheduleResult::Cancelled => UiMsg {
+                    Err(e) if e == "cancelled" => UiMsg {
                         kind: 0,
                         key: "cancelled",
                         args: vec![],
                     },
-                    actions::ScheduleResult::Failed(e) => UiMsg {
+                    Err(e) => UiMsg {
                         kind: 2,
                         key: "changeFail",
                         args: vec![e],
@@ -598,34 +638,40 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_ui_drag({
         let weak = ui.as_weak();
         move || {
-            if let Some(ui) = weak.upgrade() {
-                if let Some(h) = win::hwnd(&ui) {
-                    win::drag(h);
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    // The native drag loop below consumes the real button-up,
+                    // so release Slint's grab first — otherwise the drag
+                    // TouchArea stays "pressed" forever and swallows all input.
+                    ui.window().dispatch_event(
+                        slint::platform::WindowEvent::PointerReleased {
+                            position: slint::LogicalPosition::new(0.0, 0.0),
+                            button: slint::platform::PointerEventButton::Left,
+                        },
+                    );
+                    if let Some(h) = win::hwnd(&ui) {
+                        win::drag(h);
+                    }
                 }
-            }
+            });
         }
     });
 
-    // apply DWM attributes once, as soon as the HWND exists
+    // watchdog: DWM attributes + DPI size reconciliation, forever — cheap,
+    // and it keeps the window correct across monitor/DPI changes
     #[cfg(windows)]
     {
         let weak = ui.as_weak();
         let timer = std::rc::Rc::new(slint::Timer::default());
-        let timer2 = timer.clone();
-        let mut attempts = 0u32;
         timer.start(
             slint::TimerMode::Repeated,
-            std::time::Duration::from_millis(100),
+            std::time::Duration::from_millis(500),
             move || {
-                attempts += 1;
-                if attempts > 30 {
-                    timer2.stop();
-                    return;
-                }
                 if let Some(ui) = weak.upgrade() {
                     if let Some(h) = win::hwnd(&ui) {
                         win::apply_dwm(h);
-                        timer2.stop();
+                        win::ensure_size(h);
                     }
                 }
             },

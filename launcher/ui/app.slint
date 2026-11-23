@@ -390,6 +390,7 @@ component LangSeg inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "HTKK Updater";
+    icon: @image-url("../assets/logo.png");
     no-frame: true;
     background: #000000;
     default-font-family: "Segoe UI";
@@ -848,7 +849,7 @@ export component AppWindow inherits Window {
                 width: 104px;
                 height: 26px;
                 border-radius: 8px;
-                background: label == root.picked_time ? #0A84FF : (cth.has-hover || root.picker_hover == hour ? #38383A : transparent);
+                background: label == root.picked_time ? #0A84FF : (root.picker_hover == hour ? #38383A : transparent);
                 animate background { duration: 100ms; }
                 Text {
                     text: parent.label;
@@ -857,11 +858,25 @@ export component AppWindow inherits Window {
                     horizontal-alignment: center;
                     vertical-alignment: center;
                 }
-                cth := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => {
-                        root.picked_time = parent.label;
+            }
+            picker_ta := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(e) => {
+                    // map pointer position -> hour cell: col=floor((x-8)/112), row=floor((y-30)/30)
+                    let lx = self.mouse-x - 8px;
+                    let ly = self.mouse-y - 30px;
+                    let col = Math.floor(lx / 112px);
+                    let row = Math.floor(ly / 30px);
+                    let in_cell = col >= 0 && col <= 1 && row >= 0 && row <= 11
+                        && Math.mod(lx, 112px) <= 104px && Math.mod(ly, 30px) <= 26px;
+                    let h = in_cell ? col * 12 + row : -1;
+                    if (e.kind == PointerEventKind.move) {
+                        if (root.picker_hover != h) { root.picker_hover = h; }
+                    } else if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left && h >= 0) {
+                        root.picked_time = (h < 10 ? "0" : "") + h + ":00";
                         root.picker_open = false;
+                        root.picker_hover = -1;
+                    } else if (e.kind == PointerEventKind.cancel) {
                         root.picker_hover = -1;
                     }
                 }

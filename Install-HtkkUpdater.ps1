@@ -1,7 +1,11 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Repo = 'cosmaxis/htkk-updater',
     [string]$Ref = 'main',
+    # When set, install files from this local directory (bundled-installer mode)
+    # instead of downloading them from GitHub. Expected layout: the four script
+    # files and htkk-launcher.exe at the top level, optional 7z\7z.exe+7z.dll.
+    [string]$PayloadDir,
     [switch]$Uninstall
 )
 
@@ -15,10 +19,10 @@ $BinDir = Join-Path $InstallRoot 'bin'
 $SevenZipDir = Join-Path $InstallRoot '7z'
 $LogPath = Join-Path $InstallRoot 'install.log'
 $ScriptFiles = 'HtkkUpdater.psm1','Invoke-HtkkUpdate.ps1','HtkkLauncher.ps1','Install-HtkkUpdater.ps1'
-$LauncherVersion = '1.1.4'
+$LauncherVersion = '1.1.5'
 # Set at release time from the htkk-launcher.exe.sha256 published with the
 # v* GitHub release. Empty string = use the PowerShell launcher.
-$LauncherSha256 = 'D7C6088F27BD7260F629854FD60F1567E1F196E7D310FB2A98527B4C9353D66C'
+$LauncherSha256 = 'DF591045BA1CEC86DF5802CECEE64B9CEDAE9DEBE8683A5CF517A117D8524F26'
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
@@ -61,27 +65,53 @@ if ($Uninstall) {
 
 if (-not (Test-Administrator)) {
     Write-Host 'Elevation required; relaunching as administrator...'
-    $arg = "-NoProfile -ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/$Repo/$Ref/Install-HtkkUpdater.ps1' | iex`""
+    if ($PSCommandPath) {
+        $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Repo `"$Repo`" -Ref `"$Ref`""
+        if ($PayloadDir) { $arg += " -PayloadDir `"$PayloadDir`"" }
+        if ($Uninstall) { $arg += ' -Uninstall' }
+    } else {
+        $arg = "-NoProfile -ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/$Repo/$Ref/Install-HtkkUpdater.ps1' | iex`""
+    }
     Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arg -Verb RunAs
     return
 }
 
 [IO.Directory]::CreateDirectory($BinDir) | Out-Null
-Write-Step "Installing HTKK updater from $Repo@$Ref into $InstallRoot"
+if ($PayloadDir) {
+    Write-Step "Installing HTKK updater from local payload $PayloadDir into $InstallRoot"
+} else {
+    Write-Step "Installing HTKK updater from $Repo@$Ref into $InstallRoot"
+}
 
 foreach ($file in $ScriptFiles) {
-    $url = "https://raw.githubusercontent.com/$Repo/$Ref/$file"
     $target = Join-Path $BinDir $file
-    Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 60 -OutFile $target
-    if ((Get-Item -LiteralPath $target).Length -lt 512) { throw "Downloaded $file is unexpectedly small" }
-    Write-Step "Downloaded $file"
+    if ($PayloadDir) {
+        $src = Join-Path $PayloadDir $file
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "Payload is missing $file" }
+        if ($src -ine $target) { Copy-Item -LiteralPath $src -Destination $target -Force }
+        Write-Step "Installed $file from local payload"
+    } else {
+        $url = "https://raw.githubusercontent.com/$Repo/$Ref/$file"
+        Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 60 -OutFile $target
+        if ((Get-Item -LiteralPath $target).Length -lt 512) { throw "Downloaded $file is unexpectedly small" }
+        Write-Step "Downloaded $file"
+    }
 }
 
 $sevenZipExe = Join-Path $SevenZipDir '7z.exe'
 $sevenZipDll = Join-Path $SevenZipDir '7z.dll'
-$need7z = -not ((Test-Path -LiteralPath $sevenZipExe -PathType Leaf) -and (Test-Path -LiteralPath $sevenZipDll -PathType Leaf) -and
-    ((Get-FileHash -LiteralPath $sevenZipExe -Algorithm SHA256).Hash -ieq $SevenZipExeSha256) -and
-    ((Get-FileHash -LiteralPath $sevenZipDll -Algorithm SHA256).Hash -ieq $SevenZipDllSha256))
+$payloadSevenZip = if ($PayloadDir) { Join-Path $PayloadDir '7z' } else { $null }
+if ($payloadSevenZip -and (Test-Path -LiteralPath (Join-Path $payloadSevenZip '7z.exe') -PathType Leaf)) {
+    [IO.Directory]::CreateDirectory($SevenZipDir) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $payloadSevenZip '7z.exe') -Destination $sevenZipExe -Force
+    Copy-Item -LiteralPath (Join-Path $payloadSevenZip '7z.dll') -Destination $sevenZipDll -Force
+    $need7z = $false
+    Write-Step 'Installed 7-Zip from local payload'
+} else {
+    $need7z = -not ((Test-Path -LiteralPath $sevenZipExe -PathType Leaf) -and (Test-Path -LiteralPath $sevenZipDll -PathType Leaf) -and
+        ((Get-FileHash -LiteralPath $sevenZipExe -Algorithm SHA256).Hash -ieq $SevenZipExeSha256) -and
+        ((Get-FileHash -LiteralPath $sevenZipDll -Algorithm SHA256).Hash -ieq $SevenZipDllSha256))
+}
 if ($need7z) {
     $tmp = Join-Path $env:TEMP ('htkk-7z-' + [guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($tmp) | Out-Null
@@ -165,11 +195,19 @@ $launcherOk = $false
 if ($LauncherSha256) {
     try {
         Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/htkk-launcher.exe"
-        Invoke-WebRequest -Uri $launcherUrl -UseBasicParsing -TimeoutSec 60 -OutFile $launcherExe
+        if ($PayloadDir) {
+            $src = Join-Path $PayloadDir 'htkk-launcher.exe'
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw 'payload is missing htkk-launcher.exe' }
+            if ($src -ine $launcherExe) { Copy-Item -LiteralPath $src -Destination $launcherExe -Force }
+            Write-Step "Native launcher $LauncherVersion installed from local payload"
+        } else {
+            $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/htkk-launcher.exe"
+            Invoke-WebRequest -Uri $launcherUrl -UseBasicParsing -TimeoutSec 60 -OutFile $launcherExe
+            Write-Step "Native launcher $LauncherVersion downloaded"
+        }
         Assert-FileHash -Path $launcherExe -Sha256 $LauncherSha256 -Name 'htkk-launcher.exe'
         $launcherOk = $true
-        Write-Step "Native launcher $LauncherVersion downloaded and verified"
+        Write-Step 'Native launcher hash verified'
     } catch {
         Remove-Item -LiteralPath $launcherExe -Force -ErrorAction SilentlyContinue
         Write-Step "Warning: native launcher unavailable ($($_.Exception.Message)); using the PowerShell launcher"
