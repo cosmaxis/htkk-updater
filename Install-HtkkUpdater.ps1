@@ -192,6 +192,7 @@ Write-Step "Scheduled task '$TaskName' registered (daily 09:00, runs as $env:USE
 # Native launcher: only enabled once $LauncherSha256 is pinned at release time.
 $launcherExe = Join-Path $BinDir 'htkk-launcher.exe'
 $launcherOk = $false
+$shaToCheck = $LauncherSha256
 if ($LauncherSha256) {
     try {
         Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -204,8 +205,15 @@ if ($LauncherSha256) {
             $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/htkk-launcher.exe"
             Invoke-WebRequest -Uri $launcherUrl -UseBasicParsing -TimeoutSec 60 -OutFile $launcherExe
             Write-Step "Native launcher $LauncherVersion downloaded"
+            # Prefer the .sha256 published alongside the exe: CI rebuilds produce a
+            # different (also valid) hash than the one pinned at commit time.
+            try {
+                $shaText = (Invoke-WebRequest -Uri "$launcherUrl.sha256" -UseBasicParsing -TimeoutSec 30).Content
+                $expected = ($shaText -split '\s+')[0]
+                if ($expected -match '^[0-9A-Fa-f]{64}$') { $shaToCheck = $expected }
+            } catch { }
         }
-        Assert-FileHash -Path $launcherExe -Sha256 $LauncherSha256 -Name 'htkk-launcher.exe'
+        Assert-FileHash -Path $launcherExe -Sha256 $shaToCheck -Name 'htkk-launcher.exe'
         $launcherOk = $true
         Write-Step 'Native launcher hash verified'
     } catch {

@@ -81,6 +81,18 @@ jobs:
         run: cargo test
 
       - name: cargo build --release
-        env:
-          HTKK_REQUIRE_RESOURCES: "1"
         run: cargo build --release
+
+      # ARM64 runners have no rc.exe/windres — inject icon + manifest +
+      # version info post-build via Win32 BeginUpdateResource instead.
+      - name: Embed resources
+        shell: pwsh
+        run: |
+          $ver = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([0-9.]+)"').Groups[1].Value
+          if (($ver -split '\.').Count -eq 3) { $ver = "$ver.0" }
+          ./embed-resources.ps1 -ExePath target/release/htkk-launcher.exe -IcoPath assets/htkk.ico -ManifestPath app.manifest -Version $ver
+          $exe = Resolve-Path target/release/htkk-launcher.exe
+          if ((Get-Item $exe).VersionInfo.FileVersion -ne $ver) { throw "version info missing after embed" }
+          Add-Type -AssemblyName System.Drawing
+          $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if (-not $ico -or $ico.Width -lt 16) { throw "icon missing after embed" }

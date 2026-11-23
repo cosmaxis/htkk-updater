@@ -7,7 +7,9 @@ use windows::core::{w, HRESULT, PCWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, GetLastError, HWND, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
-use windows::Win32::System::Threading::{GetExitCodeProcess, TerminateProcess, WaitForSingleObject};
+use windows::Win32::System::Threading::{
+    GetExitCodeProcess, TerminateProcess, WaitForSingleObject,
+};
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;
 

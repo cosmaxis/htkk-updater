@@ -31,5 +31,6 @@ Requires: Rust toolchain, Inno Setup 6 (`winget install JRSoftware.InnoSetup`).
 - PowerShell 5.1: no ternary operator; `0xFEEF04BD`-style hex literals >0x7FFFFFFF parse as negative Int32 (write raw bytes instead); `Set-Content -Encoding UTF8` writes BOM.
 - Task Scheduler: `schtasks /change` on an S4U task prompts for a password and hangs on hidden consoles — use COM `RegisterTaskDefinition` (launcher `task.rs`) with an elevated `schtasks` fallback.
 - COM `LastRunTime` returns `1999-11-30` (not OLE zero) for never-run tasks on recent builds — treated as "never".
-- GitHub `windows-latest` runners include rc.exe; this repo's self-hosted fleet may not — keep `HTKK_REQUIRE_RESOURCES=1` in release CI.
+- The self-hosted ARM64 runner has no resource compiler — CI embeds resources post-build via `embed-resources.ps1` (see `Embed resources` steps in both workflows). `HTKK_REQUIRE_RESOURCES=1` is NOT set in CI for that reason.
+- The installer fetches `htkk-launcher.exe.sha256` from the release at install time (CI-rebuilt exes have different hashes); the committed `$LauncherSha256` pin is only the fallback.
 - The exe is unsigned: SmartScreen will warn on the setup.exe and one-liner-downloaded binaries until a cert is added.

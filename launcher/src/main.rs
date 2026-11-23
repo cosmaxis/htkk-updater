@@ -644,12 +644,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     // The native drag loop below consumes the real button-up,
                     // so release Slint's grab first — otherwise the drag
                     // TouchArea stays "pressed" forever and swallows all input.
-                    ui.window().dispatch_event(
-                        slint::platform::WindowEvent::PointerReleased {
+                    ui.window()
+                        .dispatch_event(slint::platform::WindowEvent::PointerReleased {
                             position: slint::LogicalPosition::new(0.0, 0.0),
                             button: slint::platform::PointerEventButton::Left,
-                        },
-                    );
+                        });
                     if let Some(h) = win::hwnd(&ui) {
                         win::drag(h);
                     }

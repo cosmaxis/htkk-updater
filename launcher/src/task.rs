@@ -231,9 +231,10 @@ pub fn set_trigger_time(hhmm: &str) -> Result<(), String> {
         let empty = VARIANT::default();
         svc.Connect(&empty, &empty, &empty, &empty)
             .map_err(|e| e.to_string())?;
-        let root = svc.GetFolder(&BSTR::from("\\")).map_err(|e| e.to_string())?;
-        let task = find_task(&root)?
-            .ok_or_else(|| "task not found".to_string())?;
+        let root = svc
+            .GetFolder(&BSTR::from("\\"))
+            .map_err(|e| e.to_string())?;
+        let task = find_task(&root)?.ok_or_else(|| "task not found".to_string())?;
         let def = task.Definition().map_err(|e| e.to_string())?;
         let trigs = def.Triggers().map_err(|e| e.to_string())?;
         let mut count = 0i32;
