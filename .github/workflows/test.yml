@@ -66,6 +66,19 @@ jobs:
             Write-Warning "Git Bash not found at $gitBin"
           }
 
+      # The fleet has no C++ toolchain — provision MSVC Build Tools so
+      # windows-msvc targets can link (rustc locates them via vswhere).
+      # winget install is a fast no-op once present.
+      - name: Ensure MSVC Build Tools
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $found = (Test-Path $vswhere) -and [bool](& $vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+          if ($found) { Write-Host 'MSVC Build Tools already installed'; exit 0 }
+          Write-Host 'Installing Visual Studio 2022 Build Tools (C++ workload)...'
+          winget install --id Microsoft.VisualStudio.2022.BuildTools --silent --accept-package-agreements --accept-source-agreements --disable-interactivity --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools")) { throw 'Build Tools install failed' }
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable-x86_64-pc-windows-msvc
