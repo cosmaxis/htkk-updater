@@ -235,12 +235,12 @@ mod win {
     /// (and focuses its window before returning).
     pub fn single_instance() -> bool {
         unsafe {
-            let h = CreateMutexW(None, true, w!("Local\\HtkkLauncherSingleInstance"));
+            let h = CreateMutexW(None, true, w!("Local\\HttkLauncherSingleInstance"));
             let exists = GetLastError().0 == 183; // ERROR_ALREADY_EXISTS
             if let Ok(h) = h {
                 if exists {
                     let _ = CloseHandle(h);
-                    if let Ok(hwnd) = FindWindowW(PCWSTR::null(), w!("HTKK Updater")) {
+                    if let Ok(hwnd) = FindWindowW(PCWSTR::null(), w!("HTTK Updater")) {
                         if !hwnd.is_invalid() {
                             if IsIconic(hwnd).as_bool() {
                                 let _ = ShowWindow(hwnd, SW_RESTORE);
@@ -464,12 +464,12 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    ui.on_open_htkk({
+    ui.on_open_httk({
         let msgs = msgs.clone();
         let weak = ui.as_weak();
         move || {
             if let Some(ui) = weak.upgrade() {
-                match actions::open_htkk() {
+                match actions::open_httk() {
                     Ok(()) => set_notice(&ui, &msgs, None),
                     Err(actions::OpenError::NotInstalled | actions::OpenError::ExeMissing) => {
                         set_notice(

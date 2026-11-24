@@ -1693,8 +1693,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "htkk-launcher"
-version = "1.1.5"
+name = "htmlparser"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48ce8546b993eaf241d69ded33b1be6d205dd9857ec879d9d18bd05d3676e144"
+
+[[package]]
+name = "httk-launcher"
+version = "1.2.0"
 dependencies = [
  "embed-resource",
  "png",
@@ -1706,12 +1712,6 @@ dependencies = [
  "slint-build",
  "windows",
 ]
-
-[[package]]
-name = "htmlparser"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48ce8546b993eaf241d69ded33b1be6d205dd9857ec879d9d18bd05d3676e144"
 
 [[package]]
 name = "i-slint-backend-linuxkms"

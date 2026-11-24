@@ -2,18 +2,18 @@
 param([string]$ConfigPath)
 
 $ErrorActionPreference = 'Stop'
-Import-Module (Join-Path $PSScriptRoot 'HtkkUpdater.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'HttkUpdater.psm1') -Force
 if ($ConfigPath) {
     if (-not [IO.Path]::IsPathRooted($ConfigPath)) { throw 'ConfigPath must be absolute' }
     $config = Import-PowerShellDataFile -LiteralPath $ConfigPath
 } else {
-    $root = Join-Path $env:ProgramData 'HtkkUpdater'
+    $root = Join-Path $env:ProgramData 'HttkUpdater'
     $id = [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
     $install = $null
     foreach ($dir in @('C:\Program Files (x86)\HTKK','C:\Program Files\HTKK')) {
         if (Test-Path -LiteralPath (Join-Path $dir 'Project\HTKK.exe.config') -PathType Leaf) { $install = $dir; break }
     }
-    if (-not $install) { throw 'HTKK installation not found' }
+    if (-not $install) { throw 'HTTK installation not found' }
     $config = @{
         InstallDirectory = $install
         WorkDirectory = Join-Path $root "work\$id"
@@ -32,9 +32,9 @@ if ($ConfigPath) {
         MaxArchiveEntries = 30000
     }
 }
-$result = Invoke-HtkkUpdate -Config $config
+$result = Invoke-HttkUpdate -Config $config
 $json = $result | ConvertTo-Json -Depth 6
-$logRoot = Join-Path $env:ProgramData 'HtkkUpdater'
+$logRoot = Join-Path $env:ProgramData 'HttkUpdater'
 [IO.Directory]::CreateDirectory($logRoot) | Out-Null
 [IO.File]::WriteAllText((Join-Path $logRoot 'last-result.json'),$json,(New-Object Text.UTF8Encoding($false)))
 $json

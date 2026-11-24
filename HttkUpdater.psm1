@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-function Assert-HtkkConfig {
+function Assert-HttkConfig {
     param([Parameter(Mandatory=$true)][hashtable]$Config)
     $required = @('InstallDirectory','WorkDirectory','BackupDirectory','RestoreVerificationDirectory','SevenZipPath','SevenZipSha256','PublisherThumbprints','ReleaseIndicatorPath','ProcessNames','DataPaths','MaxArchiveBytes','MaxExtractedBytes','MaxArchiveEntries')
     foreach ($key in $required) { if (-not $Config.ContainsKey($key) -or $null -eq $Config[$key]) { throw "Missing configuration: $key" } }
@@ -20,7 +20,7 @@ function Assert-HtkkConfig {
     if (-not $Config.ContainsKey('ReleaseIndicatorVerified') -or $Config.ReleaseIndicatorVerified -isnot [bool] -or -not $Config.ReleaseIndicatorVerified) { throw 'An independently verified release indicator is required' }
 }
 
-function Get-HtkkRelease {
+function Get-HttkRelease {
     param([Parameter(Mandatory=$true)][hashtable]$Config)
     $uri = 'https://www.gdt.gov.vn/wps/portal/home/hotrokekhai?1dmy&current=true&urile=wcm:path:/gdt+content/sa_gdt/htkk/soft_sup_declare'
     $response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
@@ -43,7 +43,7 @@ function Get-HtkkRelease {
     return $sorted[0]
 }
 
-function Save-HtkkDownload {
+function Save-HttkDownload {
     param([Parameter(Mandatory=$true)][string]$Uri,[Parameter(Mandatory=$true)][string]$Path,[Parameter(Mandatory=$true)][long]$MaxBytes)
     $current = [uri]$Uri
     $created = $false
@@ -80,7 +80,7 @@ function Save-HtkkDownload {
     } catch { if ($created -and (Test-Path -LiteralPath $Path -PathType Leaf)) { Remove-Item -LiteralPath $Path -Force }; throw } finally { $client.Dispose(); $handler.Dispose() }
 }
 
-function Expand-HtkkArchive {
+function Expand-HttkArchive {
     param([Parameter(Mandatory=$true)][hashtable]$Config,[Parameter(Mandatory=$true)][string]$Archive,[Parameter(Mandatory=$true)][string]$Destination)
     if (-not (Test-Path -LiteralPath $Config.SevenZipPath -PathType Leaf) -or (Get-FileHash -LiteralPath $Config.SevenZipPath -Algorithm SHA256).Hash -ine $Config.SevenZipSha256) { throw 'Trusted 7z executable missing or digest mismatch' }
     $dll = Join-Path ([IO.Path]::GetDirectoryName($Config.SevenZipPath)) '7z.dll'
@@ -107,11 +107,11 @@ function Expand-HtkkArchive {
     [IO.Directory]::CreateDirectory($Destination) | Out-Null
     & $Config.SevenZipPath x -y "-o$Destination" -- $Archive | Out-Null
     if ($LASTEXITCODE -ne 0) { throw '7z extraction failed' }
-    $actual = Get-HtkkManifest -Root $Destination
+    $actual = Get-HttkManifest -Root $Destination
     if (@($actual).Count -gt [long]$Config.MaxArchiveEntries -or (($actual | Measure-Object -Property Length -Sum).Sum -gt [long]$Config.MaxExtractedBytes)) { throw 'Extracted files exceed configured limits' }
 }
 
-function Get-HtkkManifest {
+function Get-HttkManifest {
     param([Parameter(Mandatory=$true)][string]$Root)
     $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
     if (-not (Test-Path -LiteralPath $rootFull -PathType Container)) { throw "Directory not found: $rootFull" }
@@ -131,14 +131,14 @@ function Get-HtkkManifest {
     return @($result | Sort-Object Path)
 }
 
-function Compare-HtkkManifest {
+function Compare-HttkManifest {
     param([object[]]$Expected,[object[]]$Actual)
     $a = @($Expected | Sort-Object Path); $b = @($Actual | Sort-Object Path)
     if ($a.Count -ne $b.Count) { throw 'Manifest entry count mismatch' }
     for ($i=0; $i -lt $a.Count; $i++) { if ($a[$i].Path -cne $b[$i].Path -or $a[$i].Kind -cne $b[$i].Kind -or $a[$i].Length -ne $b[$i].Length -or $a[$i].Hash -cne $b[$i].Hash) { throw "Manifest mismatch: $($a[$i].Path)" } }
 }
 
-function Copy-HtkkTree {
+function Copy-HttkTree {
     param([string]$Source,[string]$Destination,[object[]]$Manifest)
     if (Test-Path -LiteralPath $Destination) { throw "Destination already exists: $Destination" }
     [IO.Directory]::CreateDirectory($Destination) | Out-Null
@@ -149,15 +149,15 @@ function Copy-HtkkTree {
     }
 }
 
-function Backup-HtkkInstallation {
+function Backup-HttkInstallation {
     param([Parameter(Mandatory=$true)][hashtable]$Config)
-    $manifest = @(Get-HtkkManifest -Root $Config.InstallDirectory)
+    $manifest = @(Get-HttkManifest -Root $Config.InstallDirectory)
     foreach ($dataPath in $Config.DataPaths) { if (-not (Test-Path -LiteralPath $dataPath)) { throw "Configured data path missing: $dataPath" } }
-    Copy-HtkkTree -Source $Config.InstallDirectory -Destination $Config.BackupDirectory -Manifest $manifest
-    Compare-HtkkManifest -Expected $manifest -Actual @(Get-HtkkManifest -Root $Config.BackupDirectory)
-    Compare-HtkkManifest -Expected $manifest -Actual @(Get-HtkkManifest -Root $Config.InstallDirectory)
-    Copy-HtkkTree -Source $Config.BackupDirectory -Destination $Config.RestoreVerificationDirectory -Manifest $manifest
-    Compare-HtkkManifest -Expected $manifest -Actual @(Get-HtkkManifest -Root $Config.RestoreVerificationDirectory)
+    Copy-HttkTree -Source $Config.InstallDirectory -Destination $Config.BackupDirectory -Manifest $manifest
+    Compare-HttkManifest -Expected $manifest -Actual @(Get-HttkManifest -Root $Config.BackupDirectory)
+    Compare-HttkManifest -Expected $manifest -Actual @(Get-HttkManifest -Root $Config.InstallDirectory)
+    Copy-HttkTree -Source $Config.BackupDirectory -Destination $Config.RestoreVerificationDirectory -Manifest $manifest
+    Compare-HttkManifest -Expected $manifest -Actual @(Get-HttkManifest -Root $Config.RestoreVerificationDirectory)
     $manifestPath = $Config.BackupDirectory + '.manifest.json'
     if (Test-Path -LiteralPath $manifestPath) { throw 'Manifest destination already exists' }
     $json = ConvertTo-Json -InputObject @($manifest) -Depth 4
@@ -165,7 +165,7 @@ function Backup-HtkkInstallation {
     return [pscustomobject]@{ Backup=$Config.BackupDirectory; RestoreVerification=$Config.RestoreVerificationDirectory; Manifest=$manifestPath }
 }
 
-function Get-HtkkInstalledVersion {
+function Get-HttkInstalledVersion {
     param([hashtable]$Config)
     if (-not (Test-Path -LiteralPath $Config.ReleaseIndicatorPath -PathType Leaf)) { throw 'Release indicator missing' }
     $xml = New-Object System.Xml.XmlDocument
@@ -181,12 +181,12 @@ function Get-HtkkInstalledVersion {
     return $version
 }
 
-function Assert-HtkkNotRunning {
+function Assert-HttkNotRunning {
     param([hashtable]$Config)
     foreach ($name in $Config.ProcessNames) { if (@(Get-Process -Name $name -ErrorAction SilentlyContinue).Count -gt 0) { throw "Application process running: $name" } }
 }
 
-function Assert-HtkkSignatures {
+function Assert-HttkSignatures {
     param([hashtable]$Config,[string]$Directory)
     $msi = @(Get-ChildItem -LiteralPath $Directory -Filter '*.msi' -File -Recurse)
     $setup = @(Get-ChildItem -LiteralPath $Directory -Filter 'setup.exe' -File -Recurse)
@@ -198,51 +198,51 @@ function Assert-HtkkSignatures {
     return $msi[0].FullName
 }
 
-function Assert-HtkkElevation {
+function Assert-HttkElevation {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator elevation is required' }
 }
 
-function Invoke-HtkkUpdate {
+function Invoke-HttkUpdate {
     [CmdletBinding()]
     param([Parameter(Mandatory=$true)][hashtable]$Config)
     $mutex = $null; $locked = $false; $stage = 'Configuration'
     try {
-        Assert-HtkkConfig $Config
+        Assert-HttkConfig $Config
         Add-Type -AssemblyName System.Net.Http
-        $mutex = New-Object System.Threading.Mutex($false,'Global\HtkkUpdater')
+        $mutex = New-Object System.Threading.Mutex($false,'Global\HttkUpdater')
         try { $locked = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $locked = $true }
         if (-not $locked) { throw 'Another updater is running' }
-        $stage = 'ProcessCheck'; Assert-HtkkNotRunning $Config
-        $stage = 'InstalledVersion'; $installed = Get-HtkkInstalledVersion $Config
-        $stage = 'Discovery'; $release = Get-HtkkRelease $Config
+        $stage = 'ProcessCheck'; Assert-HttkNotRunning $Config
+        $stage = 'InstalledVersion'; $installed = Get-HttkInstalledVersion $Config
+        $stage = 'Discovery'; $release = Get-HttkRelease $Config
         if ($installed -ge $release.Version) { return [pscustomobject]@{ Status='Current'; InstalledVersion=$installed.ToString(); LatestVersion=$release.Version.ToString(); InstallerValidated=$false } }
-        $stage = 'Elevation'; Assert-HtkkElevation
+        $stage = 'Elevation'; Assert-HttkElevation
         $stage = 'Download'
         if (Test-Path -LiteralPath $Config.WorkDirectory) { throw 'WorkDirectory must not already exist' }
         [IO.Directory]::CreateDirectory($Config.WorkDirectory) | Out-Null
         $archive = Join-Path $Config.WorkDirectory 'release.archive'
-        Save-HtkkDownload -Uri $release.Uri -Path $archive -MaxBytes ([long]$Config.MaxArchiveBytes)
-        $stage = 'Extraction'; $extracted = Join-Path $Config.WorkDirectory 'extracted'; Expand-HtkkArchive -Config $Config -Archive $archive -Destination $extracted
-        $stage = 'Signature'; $msi = Assert-HtkkSignatures -Config $Config -Directory $extracted
-        $stage = 'Backup'; Assert-HtkkNotRunning $Config; $backup = Backup-HtkkInstallation $Config
-        $stage = 'Uninstall'; Assert-HtkkNotRunning $Config
+        Save-HttkDownload -Uri $release.Uri -Path $archive -MaxBytes ([long]$Config.MaxArchiveBytes)
+        $stage = 'Extraction'; $extracted = Join-Path $Config.WorkDirectory 'extracted'; Expand-HttkArchive -Config $Config -Archive $archive -Destination $extracted
+        $stage = 'Signature'; $msi = Assert-HttkSignatures -Config $Config -Directory $extracted
+        $stage = 'Backup'; Assert-HttkNotRunning $Config; $backup = Backup-HttkInstallation $Config
+        $stage = 'Uninstall'; Assert-HttkNotRunning $Config
         $registrations = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.PSObject.Properties['InstallLocation'] -and $_.DisplayName -eq 'HTKK' -and $_.PSChildName -match '^\{[0-9A-Fa-f-]{36}\}$' -and $_.InstallLocation -and [IO.Path]::GetFullPath($_.InstallLocation).TrimEnd('\') -ieq [IO.Path]::GetFullPath($Config.InstallDirectory).TrimEnd('\') })
         if ($registrations.Count -ne 1) { throw 'Expected exactly one HTKK MSI registration at the configured installation directory' }
         $uninstallLog = Join-Path $Config.WorkDirectory 'uninstall.log'
         $uninstall = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList @('/x',$registrations[0].PSChildName,'/qn','/norestart','/l*v',('"'+$uninstallLog+'"')) -Wait -PassThru
         if ($uninstall.ExitCode -eq 3010) { throw "Uninstall requires reboot; installation not attempted; backup: $($backup.Backup); log: $uninstallLog" }
         if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed with exit code $($uninstall.ExitCode); backup: $($backup.Backup); log: $uninstallLog" }
-        $stage = 'Install'; Assert-HtkkNotRunning $Config
+        $stage = 'Install'; Assert-HttkNotRunning $Config
         $log = Join-Path $Config.WorkDirectory 'msiexec.log'
         $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList @('/i',('"'+$msi+'"'),'/qn','/norestart','/l*v',('"'+$log+'"')) -Wait -PassThru
         if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) { throw "MSI failed with exit code $($process.ExitCode); backup: $($backup.Backup); log: $log" }
         if ($process.ExitCode -eq 3010) { return [pscustomobject]@{ Status='RebootRequired'; InstalledVersion=$null; LatestVersion=$release.Version.ToString(); Backup=$backup; Log=$log; RebootRequired=$true; InstallerValidated=$false } }
-        $stage = 'Verification'; $actual = Get-HtkkInstalledVersion $Config
+        $stage = 'Verification'; $actual = Get-HttkInstalledVersion $Config
         if ($actual -ne $release.Version) { throw "Installed version $actual does not match expected $($release.Version); backup: $($backup.Backup); log: $log" }
         return [pscustomobject]@{ Status='Updated'; InstalledVersion=$actual.ToString(); LatestVersion=$release.Version.ToString(); Backup=$backup; Log=$log; RebootRequired=($process.ExitCode -eq 3010); InstallerValidated=$true }
     } catch { return [pscustomobject]@{ Status='Error'; Stage=$stage; Error=$_.Exception.Message; Backup=$Config.BackupDirectory; Work=$Config.WorkDirectory; InstallerValidated=$false } }
     finally { if ($locked) { $mutex.ReleaseMutex() }; if ($null -ne $mutex) { $mutex.Dispose() } }
 }
 
-Export-ModuleMember -Function Assert-HtkkConfig,Get-HtkkRelease,Save-HtkkDownload,Expand-HtkkArchive,Get-HtkkManifest,Compare-HtkkManifest,Copy-HtkkTree,Backup-HtkkInstallation,Get-HtkkInstalledVersion,Assert-HtkkNotRunning,Assert-HtkkSignatures,Assert-HtkkElevation,Invoke-HtkkUpdate
+Export-ModuleMember -Function Assert-HttkConfig,Get-HttkRelease,Save-HttkDownload,Expand-HttkArchive,Get-HttkManifest,Compare-HttkManifest,Copy-HttkTree,Backup-HttkInstallation,Get-HttkInstalledVersion,Assert-HttkNotRunning,Assert-HttkSignatures,Assert-HttkElevation,Invoke-HttkUpdate

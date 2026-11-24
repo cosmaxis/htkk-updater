@@ -1,4 +1,4 @@
-// HTKK launcher — Apple-HIG dark UI, ported from HtkkLauncher.ps1.
+// HTTK launcher — Apple-HIG dark UI, ported from HttkLauncher.ps1.
 
 export struct StatusData {
     version_text: string,
@@ -206,15 +206,28 @@ component Pill inherits Rectangle {
     background: c.with-alpha(0.16);
     border-width: 1px;
     border-color: c.with-alpha(0.55);
-    Rectangle {
-        width: 8px;
-        height: 8px;
-        border-radius: 4px;
-        x: 12px;
-        y: (parent.height - self.height) / 2;
-        background: c;
-        opacity: root.pulse ? (root.blink ? 0.35 : 1.0) : 1.0;
-        animate opacity { duration: 400ms; }
+    HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
+        alignment: center;
+        spacing: 8px;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: c;
+            opacity: root.pulse ? (root.blink ? 0.35 : 1.0) : 1.0;
+            animate opacity { duration: 400ms; }
+        }
+        t := Text {
+            text: root.text;
+            color: c;
+            font-size: 8.5pt;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+            max-width: parent.width - 34px;
+        }
     }
     Timer {
         interval: 500ms;
@@ -222,16 +235,6 @@ component Pill inherits Rectangle {
         triggered => {
             root.blink = !root.blink;
         }
-    }
-    t := Text {
-        text: root.text;
-        color: c;
-        font-size: 8.5pt;
-        font-weight: 600;
-        x: 26px;
-        width: parent.width - 30px;
-        vertical-alignment: center;
-        overflow: elide;
     }
 }
 
@@ -389,7 +392,7 @@ component LangSeg inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "HTKK Updater";
+    title: "HTTK Updater";
     icon: @image-url("../assets/logo.png");
     no-frame: true;
     background: #000000;
@@ -414,7 +417,7 @@ export component AppWindow inherits Window {
     in-out property <int> picker_hover: -1;
     in-out property <bool> time_adopted: false;
 
-    callback open_htkk();
+    callback open_httk();
     callback check_updates();
     callback apply_time(string);
     callback set_lang(bool);
@@ -720,7 +723,7 @@ export component AppWindow inherits Window {
         text: root.txt.open;
         a11y: root.txt.openacc;
         clicked => {
-            root.open_htkk();
+            root.open_httk();
         }
         esc => {
             root.ui_close();

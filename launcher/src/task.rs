@@ -1,9 +1,9 @@
-//! Task Scheduler 2.0 COM access: find "HTKK Daily Updater", read its state,
+//! Task Scheduler 2.0 COM access: find "HTTK Daily Updater", read its state,
 //! first trigger time, last run time/result, and run it on demand.
 
 #![cfg(windows)]
 
-use crate::status::{TaskLookup, TASK_NAME};
+use crate::status::{TaskLookup, LEGACY_TASK_NAME, TASK_NAME};
 use windows::core::BSTR;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
@@ -57,25 +57,36 @@ fn index_variant(i: i32) -> VARIANT {
     v
 }
 
-fn find_task(folder: &ITaskFolder) -> Result<Option<IRegisteredTask>, String> {
+/// Find the updater task under either its current or pre-1.2.0 name.
+/// Returns the task plus the name it was found under, so re-registration
+/// preserves the existing name until the installer migrates it.
+fn find_task(folder: &ITaskFolder) -> Result<Option<(IRegisteredTask, &'static str)>, String> {
     unsafe {
-        match folder.GetTask(&BSTR::from(TASK_NAME)) {
-            Ok(t) => return Ok(Some(t)),
-            Err(e) if !is_not_found(&e) => return Err(format!("{e}")),
-            _ => {}
+        let mut first_err: Option<String> = None;
+        for name in [TASK_NAME, LEGACY_TASK_NAME] {
+            match folder.GetTask(&BSTR::from(name)) {
+                Ok(t) => return Ok(Some((t, name))),
+                Err(e) if is_not_found(&e) => {}
+                Err(e) => {
+                    if first_err.is_none() {
+                        first_err = Some(format!("{e}"));
+                    }
+                }
+            }
         }
         // Fall back to enumerating subfolders of the given folder.
-        let mut first_err: Option<String> = None;
         if let Ok(folders) = folder.GetFolders(0) {
             if let Ok(count) = folders.Count() {
                 for i in 1..=count {
                     if let Ok(sub) = folders.get_Item(&index_variant(i)) {
-                        match sub.GetTask(&BSTR::from(TASK_NAME)) {
-                            Ok(t) => return Ok(Some(t)),
-                            Err(e) if is_not_found(&e) => {}
-                            Err(e) => {
-                                if first_err.is_none() {
-                                    first_err = Some(format!("{e}"));
+                        for name in [TASK_NAME, LEGACY_TASK_NAME] {
+                            match sub.GetTask(&BSTR::from(name)) {
+                                Ok(t) => return Ok(Some((t, name))),
+                                Err(e) if is_not_found(&e) => {}
+                                Err(e) => {
+                                    if first_err.is_none() {
+                                        first_err = Some(format!("{e}"));
+                                    }
                                 }
                             }
                         }
@@ -149,7 +160,7 @@ pub fn query() -> TaskLookup {
             Err(e) => return TaskLookup::Error(format!("{e}")),
         };
         let task = match find_task(&root) {
-            Ok(Some(t)) => t,
+            Ok(Some((t, _))) => t,
             Ok(None) => return TaskLookup::NotFound,
             Err(e) => return TaskLookup::Error(e),
         };
@@ -193,7 +204,7 @@ pub fn run_now() -> Result<(), RunError> {
             .GetFolder(&BSTR::from("\\"))
             .map_err(|e| RunError::Other(e.to_string()))?;
         let task = match find_task(&root).map_err(RunError::Other)? {
-            Some(t) => t,
+            Some((t, _)) => t,
             None => return Err(RunError::NotFound),
         };
         let state = task.State().map(|s| s.0).unwrap_or(0);
@@ -234,7 +245,7 @@ pub fn set_trigger_time(hhmm: &str) -> Result<(), String> {
         let root = svc
             .GetFolder(&BSTR::from("\\"))
             .map_err(|e| e.to_string())?;
-        let task = find_task(&root)?.ok_or_else(|| "task not found".to_string())?;
+        let (task, name) = find_task(&root)?.ok_or_else(|| "task not found".to_string())?;
         let def = task.Definition().map_err(|e| e.to_string())?;
         let trigs = def.Triggers().map_err(|e| e.to_string())?;
         let mut count = 0i32;
@@ -257,7 +268,7 @@ pub fn set_trigger_time(hhmm: &str) -> Result<(), String> {
         trig.SetStartBoundary(&BSTR::from(boundary))
             .map_err(|e| e.to_string())?;
         root.RegisterTaskDefinition(
-            &BSTR::from(TASK_NAME),
+            &BSTR::from(name),
             &def,
             TASK_CREATE_OR_UPDATE.0,
             &VARIANT::default(),

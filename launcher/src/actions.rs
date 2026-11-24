@@ -1,8 +1,8 @@
-//! User actions: launch HTKK, run the scheduled task via elevated schtasks.exe.
+//! User actions: launch HTTK, run the scheduled task via elevated schtasks.exe.
 
 #![cfg(windows)]
 
-use crate::status::{install_dir, TASK_NAME};
+use crate::status::{install_dir, LEGACY_TASK_NAME, TASK_NAME};
 use windows::core::{w, HRESULT, PCWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, GetLastError, HWND, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
@@ -24,7 +24,7 @@ pub enum OpenError {
 }
 
 /// Launch Project\HTKK.exe with its directory as the working directory.
-pub fn open_htkk() -> Result<(), OpenError> {
+pub fn open_httk() -> Result<(), OpenError> {
     let dir = install_dir().ok_or(OpenError::NotInstalled)?;
     let exe = dir.join(r"Project\HTKK.exe");
     if !exe.is_file() {
@@ -119,16 +119,18 @@ pub fn set_task_time_elevated(hhmm: &str) -> ScheduleResult {
          $svc = New-Object -ComObject Schedule.Service\n\
          $svc.Connect()\n\
          $folder = $svc.GetFolder('\\')\n\
-         $task = $folder.GetTask('{TASK_NAME}')\n\
+         $task = $null; $taskName = $null\n\
+         foreach ($n in '{TASK_NAME}','{LEGACY_TASK_NAME}') {{ try {{ $task = $folder.GetTask($n); $taskName = $n; break }} catch {{}} }}\n\
+         if (-not $task) {{ throw 'updater task not found' }}\n\
          $def = $task.Definition\n\
          $trig = $def.Triggers.Item(1)\n\
          $sb = [string]$trig.StartBoundary\n\
          if ($sb.Length -lt 19 -or $sb[10] -ne 'T') {{ throw \"unexpected StartBoundary: $sb\" }}\n\
          $trig.StartBoundary = $sb.Substring(0,11) + '{hhmm}' + ':00' + $sb.Substring(19)\n\
-         $folder.RegisterTaskDefinition('{TASK_NAME}', $def, 6, $null, $null, 2, $null) | Out-Null\n\
+         $folder.RegisterTaskDefinition($taskName, $def, 6, $null, $null, 2, $null) | Out-Null\n\
          exit 0\n"
     );
-    let path = std::env::temp_dir().join(format!("htkk-settime-{}.ps1", std::process::id()));
+    let path = std::env::temp_dir().join(format!("httk-settime-{}.ps1", std::process::id()));
     if std::fs::write(&path, script).is_err() {
         return ScheduleResult::Failed("could not write helper script".into());
     }
@@ -150,9 +152,10 @@ pub fn set_task_time_elevated(hhmm: &str) -> ScheduleResult {
 /// tasks, so this is the fallback when task::run_now() gets 0x80070005.
 /// schtasks /run returns immediately — no wait needed.
 pub fn run_task_elevated() -> ScheduleResult {
-    let args = format!("/run /tn \"{TASK_NAME}\"");
+    let args =
+        format!("/c schtasks /run /tn \"{TASK_NAME}\" || schtasks /run /tn \"{LEGACY_TASK_NAME}\"");
     let args_w = wide(&args);
-    let file_w = wide("schtasks.exe");
+    let file_w = wide("cmd.exe");
     let verb_w = wide("runas");
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,

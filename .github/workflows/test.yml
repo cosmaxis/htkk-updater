@@ -31,15 +31,15 @@ jobs:
       - name: Verify UTF-8 BOM on launcher (Vietnamese UI text)
         shell: pwsh
         run: |
-          $b = [IO.File]::ReadAllBytes('HtkkLauncher.ps1')
+          $b = [IO.File]::ReadAllBytes('HttkLauncher.ps1')
           if (-not ($b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)) {
-            throw 'HtkkLauncher.ps1 lost its UTF-8 BOM — PS 5.1 would misread the Vietnamese strings'
+            throw 'HttkLauncher.ps1 lost its UTF-8 BOM — PS 5.1 would misread the Vietnamese strings'
           }
           Write-Host "BOM present"
 
       - name: Run offline test suite
         shell: powershell
-        run: .\Test-HtkkUpdater.ps1
+        run: .\Test-HttkUpdater.ps1
 
   launcher:
     runs-on:
@@ -115,8 +115,8 @@ jobs:
         run: |
           $ver = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([0-9.]+)"').Groups[1].Value
           if (($ver -split '\.').Count -eq 3) { $ver = "$ver.0" }
-          ./embed-resources.ps1 -ExePath target/release/htkk-launcher.exe -IcoPath assets/htkk.ico -ManifestPath app.manifest -Version $ver
-          $exe = Resolve-Path target/release/htkk-launcher.exe
+          ./embed-resources.ps1 -ExePath target/release/httk-launcher.exe -IcoPath assets/httk.ico -ManifestPath app.manifest -Version $ver
+          $exe = Resolve-Path target/release/httk-launcher.exe
           if ((Get-Item $exe).VersionInfo.FileVersion -ne $ver) { throw "version info missing after embed" }
           Add-Type -AssemblyName System.Drawing
           $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)

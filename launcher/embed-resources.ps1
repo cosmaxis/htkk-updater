@@ -1,13 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Injects icon + application manifest resources into a compiled htkk-launcher.exe
+  Injects icon + application manifest resources into a compiled httk-launcher.exe
   using Win32 BeginUpdateResource/UpdateResource — no resource compiler needed.
-  Equivalent to what `embed-resource`/windres would link from htkk-launcher.rc.
+  Equivalent to what `embed-resource`/windres would link from httk-launcher.rc.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$ExePath,
-  [string]$IcoPath = "$PSScriptRoot\assets\htkk.ico",
+  [string]$IcoPath = "$PSScriptRoot\assets\httk.ico",
   [string]$ManifestPath = "$PSScriptRoot\app.manifest",
   [string]$Version = '1.1.5.0'
 )
@@ -110,12 +110,12 @@ try {
   $vStr = "$($parts[0]).$($parts[1]).$($parts[2]).$($parts[3])"
   $strings = [ordered]@{
     CompanyName      = 'cosmaxis'
-    FileDescription  = 'HTKK Updater Launcher'
+    FileDescription  = 'HTTK Updater Launcher'
     FileVersion      = $vStr
-    InternalName     = 'htkk-launcher'
+    InternalName     = 'httk-launcher'
     LegalCopyright   = 'Copyright (c) cosmaxis'
-    OriginalFilename = 'htkk-launcher.exe'
-    ProductName      = 'HTKK Updater'
+    OriginalFilename = 'httk-launcher.exe'
+    ProductName      = 'HTTK Updater'
     ProductVersion   = $vStr
   }
   $tbl = New-Object System.IO.MemoryStream; $tw = New-Object System.IO.BinaryWriter($tbl)

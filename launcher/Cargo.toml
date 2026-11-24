@@ -1,6 +1,6 @@
 [package]
-name = "htkk-launcher"
-version = "1.1.5"
+name = "httk-launcher"
+version = "1.2.0"
 edition = "2021"
 build = "build.rs"
 publish = false

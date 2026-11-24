@@ -1,4 +1,4 @@
-//! %LOCALAPPDATA%\HtkkUpdater\prefs.json — {"lang":"en"|"vi"}, same format as
+//! %LOCALAPPDATA%\HttkUpdater\prefs.json — {"lang":"en"|"vi"}, same format as
 //! the PowerShell launcher writes.
 
 use crate::i18n::Lang;
@@ -6,13 +6,27 @@ use std::path::PathBuf;
 
 pub fn pref_path() -> PathBuf {
     PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_else(|_| r"C:\Users\Public".into()))
+        .join(r"HttkUpdater\prefs.json")
+}
+
+/// Pre-1.2.0 prefs location — read as a fallback so the language choice
+/// survives the HtkkUpdater -> HttkUpdater rename.
+fn legacy_pref_path() -> PathBuf {
+    PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_else(|_| r"C:\Users\Public".into()))
         .join(r"HtkkUpdater\prefs.json")
 }
 
 pub fn load() -> Option<Lang> {
-    let text = std::fs::read_to_string(pref_path()).ok()?;
-    let v: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
-    Lang::parse(v.get("lang")?.as_str()?)
+    for path in [pref_path(), legacy_pref_path()] {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            let v: serde_json::Value =
+                serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
+            if let Some(lang) = Lang::parse(v.get("lang")?.as_str()?) {
+                return Some(lang);
+            }
+        }
+    }
+    None
 }
 
 pub fn save(lang: Lang) {

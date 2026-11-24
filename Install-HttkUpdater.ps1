@@ -1,10 +1,10 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Repo = 'cosmaxis/htkk-updater',
+    [string]$Repo = 'cosmaxis/httk-updater',
     [string]$Ref = 'main',
     # When set, install files from this local directory (bundled-installer mode)
     # instead of downloading them from GitHub. Expected layout: the four script
-    # files and htkk-launcher.exe at the top level, optional 7z\7z.exe+7z.dll.
+    # files and httk-launcher.exe at the top level, optional 7z\7z.exe+7z.dll.
     [string]$PayloadDir,
     [switch]$Uninstall
 )
@@ -12,17 +12,17 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$TaskName = 'HTKK Daily Updater'
-$ShortcutName = 'HTKK.lnk'
-$InstallRoot = Join-Path $env:ProgramData 'HtkkUpdater'
+$TaskName = 'HTTK Daily Updater'
+$ShortcutName = 'HTTK.lnk'
+$InstallRoot = Join-Path $env:ProgramData 'HttkUpdater'
 $BinDir = Join-Path $InstallRoot 'bin'
 $SevenZipDir = Join-Path $InstallRoot '7z'
 $LogPath = Join-Path $InstallRoot 'install.log'
-$ScriptFiles = 'HtkkUpdater.psm1','Invoke-HtkkUpdate.ps1','HtkkLauncher.ps1','Install-HtkkUpdater.ps1'
-$LauncherVersion = '1.1.5'
-# Set at release time from the htkk-launcher.exe.sha256 published with the
+$ScriptFiles = 'HttkUpdater.psm1','Invoke-HttkUpdate.ps1','HttkLauncher.ps1','Install-HttkUpdater.ps1'
+$LauncherVersion = '1.2.0'
+# Set at release time from the httk-launcher.exe.sha256 published with the
 # v* GitHub release. Empty string = use the PowerShell launcher.
-$LauncherSha256 = 'DF591045BA1CEC86DF5802CECEE64B9CEDAE9DEBE8683A5CF517A117D8524F26'
+$LauncherSha256 = '17673CBE96A0E816122A3F860FA4F7B1B2BFA4D030098AA44E81962D10DC179D'
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
@@ -44,7 +44,7 @@ function Assert-FileHash([string]$Path, [string]$Sha256, [string]$Name) {
     if ($actual -ine $Sha256) { throw "$Name hash mismatch: expected $Sha256, got $actual" }
 }
 
-function Get-HtkkInstallDir {
+function Get-HttkInstallDir {
     foreach ($dir in @('C:\Program Files (x86)\HTKK','C:\Program Files\HTKK')) {
         if (Test-Path -LiteralPath (Join-Path $dir 'Project\HTKK.exe.config') -PathType Leaf) { return $dir }
     }
@@ -53,13 +53,20 @@ function Get-HtkkInstallDir {
 
 if ($Uninstall) {
     if (-not (Test-Administrator)) { throw 'Run elevated to uninstall.' }
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-    Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop'))) {
-        Remove-Item -LiteralPath (Join-Path $d $ShortcutName) -Force -ErrorAction SilentlyContinue
+    # Cover both generations: pre-1.2.0 used 'HTKK Daily Updater'/'HTKK.lnk'/'HtkkUpdater'.
+    foreach ($tn in @($TaskName,'HTKK Daily Updater')) {
+        Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue
     }
-    Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host 'HTKK updater removed (the HTKK application itself was not touched).'
+    Get-Process -Name 'httk-launcher','htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop'))) {
+        foreach ($lnk in @($ShortcutName,'HTKK.lnk')) {
+            Remove-Item -LiteralPath (Join-Path $d $lnk) -Force -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($root in @($InstallRoot,(Join-Path $env:ProgramData 'HtkkUpdater'))) {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host 'HTTK updater removed (the HTTK application itself was not touched).'
     return
 }
 
@@ -70,17 +77,46 @@ if (-not (Test-Administrator)) {
         if ($PayloadDir) { $arg += " -PayloadDir `"$PayloadDir`"" }
         if ($Uninstall) { $arg += ' -Uninstall' }
     } else {
-        $arg = "-NoProfile -ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/$Repo/$Ref/Install-HtkkUpdater.ps1' | iex`""
+        $arg = "-NoProfile -ExecutionPolicy Bypass -Command `"irm 'https://raw.githubusercontent.com/$Repo/$Ref/Install-HttkUpdater.ps1' | iex`""
     }
     Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arg -Verb RunAs
     return
 }
 
 [IO.Directory]::CreateDirectory($BinDir) | Out-Null
+
+# Migrate a pre-1.2.0 install (HtkkUpdater naming): carry over 7-Zip, the last
+# run result and the install log, then drop the old task/shortcuts/dir.
+$legacyRoot = Join-Path $env:ProgramData 'HtkkUpdater'
+if (Test-Path -LiteralPath $legacyRoot) {
+    Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName 'HTKK Daily Updater' -Confirm:$false -ErrorAction SilentlyContinue
+    foreach ($d in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop'))) {
+        Remove-Item -LiteralPath (Join-Path $d 'HTKK.lnk') -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($f in @('last-result.json','install.log')) {
+        $src = Join-Path $legacyRoot $f
+        if (Test-Path -LiteralPath $src -PathType Leaf) {
+            try { Copy-Item -LiteralPath $src -Destination (Join-Path $InstallRoot $f) -Force } catch {}
+        }
+    }
+    $legacy7z = Join-Path $legacyRoot '7z'
+    if (Test-Path -LiteralPath (Join-Path $legacy7z '7z.exe') -PathType Leaf) {
+        [IO.Directory]::CreateDirectory($SevenZipDir) | Out-Null
+        try {
+            Copy-Item -LiteralPath (Join-Path $legacy7z '7z.exe') -Destination (Join-Path $SevenZipDir '7z.exe') -Force
+            Copy-Item -LiteralPath (Join-Path $legacy7z '7z.dll') -Destination (Join-Path $SevenZipDir '7z.dll') -Force
+        } catch {}
+    }
+    # NOTE: $legacyRoot is NOT removed here — a -PayloadDir inside it (Inno
+    # upgrade path) would delete the payload mid-install. Removed at the end.
+    Write-Step 'Migrated previous HtkkUpdater install (data, task, shortcuts)'
+}
+
 if ($PayloadDir) {
-    Write-Step "Installing HTKK updater from local payload $PayloadDir into $InstallRoot"
+    Write-Step "Installing HTTK updater from local payload $PayloadDir into $InstallRoot"
 } else {
-    Write-Step "Installing HTKK updater from $Repo@$Ref into $InstallRoot"
+    Write-Step "Installing HTTK updater from $Repo@$Ref into $InstallRoot"
 }
 
 foreach ($file in $ScriptFiles) {
@@ -113,7 +149,7 @@ if ($payloadSevenZip -and (Test-Path -LiteralPath (Join-Path $payloadSevenZip '7
         ((Get-FileHash -LiteralPath $sevenZipDll -Algorithm SHA256).Hash -ieq $SevenZipDllSha256))
 }
 if ($need7z) {
-    $tmp = Join-Path $env:TEMP ('htkk-7z-' + [guid]::NewGuid().ToString('N'))
+    $tmp = Join-Path $env:TEMP ('httk-7z-' + [guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($tmp) | Out-Null
     try {
         $msi = Join-Path $tmp '7z.msi'
@@ -134,10 +170,10 @@ Assert-FileHash -Path $sevenZipExe -Sha256 $SevenZipExeSha256 -Name '7z.exe'
 Assert-FileHash -Path $sevenZipDll -Sha256 $SevenZipDllSha256 -Name '7z.dll'
 Write-Step 'Trusted 7-Zip 26.06 verified'
 
-Import-Module (Join-Path $BinDir 'HtkkUpdater.psm1') -Force
-$installDir = Get-HtkkInstallDir
+Import-Module (Join-Path $BinDir 'HttkUpdater.psm1') -Force
+$installDir = Get-HttkInstallDir
 if (-not $installDir) {
-    Write-Step 'HTKK not installed; installing latest release'
+    Write-Step 'HTTK not installed; installing latest release'
     $work = Join-Path $InstallRoot ('bootstrap-' + [guid]::NewGuid().ToString('N'))
     [IO.Directory]::CreateDirectory($work) | Out-Null
     $installDir = 'C:\Program Files (x86)\HTKK'
@@ -159,50 +195,50 @@ if (-not $installDir) {
         MaxArchiveEntries = 30000
     }
     try {
-        Assert-HtkkNotRunning $config
-        $release = Get-HtkkRelease $config
+        Assert-HttkNotRunning $config
+        $release = Get-HttkRelease $config
         $archive = Join-Path $work 'release.archive'
-        Save-HtkkDownload -Uri $release.Uri -Path $archive -MaxBytes ([long]$config.MaxArchiveBytes)
+        Save-HttkDownload -Uri $release.Uri -Path $archive -MaxBytes ([long]$config.MaxArchiveBytes)
         $extracted = Join-Path $work 'extracted'
-        Expand-HtkkArchive -Config $config -Archive $archive -Destination $extracted
-        $msiPath = Assert-HtkkSignatures -Config $config -Directory $extracted
-        Write-Step "Installing HTKK $($release.Version)"
+        Expand-HttkArchive -Config $config -Archive $archive -Destination $extracted
+        $msiPath = Assert-HttkSignatures -Config $config -Directory $extracted
+        Write-Step "Installing HTTK $($release.Version)"
         $log = Join-Path $work 'msiexec.log'
         $proc = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList @('/i',('"' + $msiPath + '"'),'/qn','/norestart','/l*v',('"' + $log + '"')) -Wait -PassThru
-        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "HTKK install failed (msiexec exit $($proc.ExitCode)); log: $log" }
-        $installed = Get-HtkkInstalledVersion $config
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "HTTK install failed (msiexec exit $($proc.ExitCode)); log: $log" }
+        $installed = Get-HttkInstalledVersion $config
         if ($installed -ne $release.Version) { throw "Installed version $installed does not match expected $($release.Version)" }
-        Write-Step "HTKK $installed installed"
-        if ($proc.ExitCode -eq 3010) { Write-Step 'Reboot required to finish HTKK install' }
+        Write-Step "HTTK $installed installed"
+        if ($proc.ExitCode -eq 3010) { Write-Step 'Reboot required to finish HTTK install' }
     } finally { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
 } else {
-    Write-Step "HTKK found at $installDir"
+    Write-Step "HTTK found at $installDir"
 }
 
-$action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'Invoke-HtkkUpdate.ps1') + '"')
+$action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'Invoke-HttkUpdate.ps1') + '"')
 $trigger = New-ScheduledTaskTrigger -Daily -At '09:00'
 # Run as the installing user (S4U = even when not logged in; Highest = elevated).
 # On hardened Windows builds SYSTEM-principal tasks are admin-only, which would
 # hide the task from the launcher's status view and manual run button.
 $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $principal = New-ScheduledTaskPrincipal -UserId $userSid -LogonType S4U -RunLevel Highest
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Description 'Checks the official HTKK page daily and updates the installed application to the latest signed release.' -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Description 'Checks the official HTTK page daily and updates the installed application to the latest signed release.' -Force | Out-Null
 Write-Step "Scheduled task '$TaskName' registered (daily 09:00, runs as $env:USERNAME)"
 
 # Native launcher: only enabled once $LauncherSha256 is pinned at release time.
-$launcherExe = Join-Path $BinDir 'htkk-launcher.exe'
+$launcherExe = Join-Path $BinDir 'httk-launcher.exe'
 $launcherOk = $false
 $shaToCheck = $LauncherSha256
 if ($LauncherSha256) {
     try {
-        Get-Process -Name 'htkk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-Process -Name 'httk-launcher' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         if ($PayloadDir) {
-            $src = Join-Path $PayloadDir 'htkk-launcher.exe'
-            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw 'payload is missing htkk-launcher.exe' }
+            $src = Join-Path $PayloadDir 'httk-launcher.exe'
+            if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw 'payload is missing httk-launcher.exe' }
             if ($src -ine $launcherExe) { Copy-Item -LiteralPath $src -Destination $launcherExe -Force }
             Write-Step "Native launcher $LauncherVersion installed from local payload"
         } else {
-            $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/htkk-launcher.exe"
+            $launcherUrl = "https://github.com/$Repo/releases/download/v$LauncherVersion/httk-launcher.exe"
             Invoke-WebRequest -Uri $launcherUrl -UseBasicParsing -TimeoutSec 60 -OutFile $launcherExe
             Write-Step "Native launcher $LauncherVersion downloaded"
             # Prefer the .sha256 published alongside the exe: CI rebuilds produce a
@@ -213,7 +249,7 @@ if ($LauncherSha256) {
                 if ($expected -match '^[0-9A-Fa-f]{64}$') { $shaToCheck = $expected }
             } catch { }
         }
-        Assert-FileHash -Path $launcherExe -Sha256 $shaToCheck -Name 'htkk-launcher.exe'
+        Assert-FileHash -Path $launcherExe -Sha256 $shaToCheck -Name 'httk-launcher.exe'
         $launcherOk = $true
         Write-Step 'Native launcher hash verified'
     } catch {
@@ -234,7 +270,7 @@ foreach ($desktop in $desktops) {
         $shortcut.Arguments = ''
     } else {
         $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HtkkLauncher.ps1') + '"'
+        $shortcut.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $BinDir 'HttkLauncher.ps1') + '"'
     }
     $shortcut.WorkingDirectory = $BinDir
     if ($launcherOk) {
@@ -243,16 +279,22 @@ foreach ($desktop in $desktops) {
         $exe = Join-Path $installDir 'Project\HTKK.exe'
         if (Test-Path -LiteralPath $exe -PathType Leaf) { $shortcut.IconLocation = "$exe,0" }
     }
-    $shortcut.Description = 'HTKK launcher with live update status'
+    $shortcut.Description = 'HTTK launcher with live update status'
     $shortcut.Save()
     Write-Step "Desktop shortcut '$ShortcutName' created at $shortcutPath"
 }
 
+# Legacy WinForms-era location; only fills in when nothing was migrated above.
 $migrated = Join-Path $env:LOCALAPPDATA 'HtkkUpdater\last-result.json'
-if (Test-Path -LiteralPath $migrated -PathType Leaf) {
-    try { Copy-Item -LiteralPath $migrated -Destination (Join-Path $InstallRoot 'last-result.json') -Force } catch {}
+$destResult = Join-Path $InstallRoot 'last-result.json'
+if ((Test-Path -LiteralPath $migrated -PathType Leaf) -and -not (Test-Path -LiteralPath $destResult -PathType Leaf)) {
+    try { Copy-Item -LiteralPath $migrated -Destination $destResult -Force } catch {}
 }
 
-Write-Step 'Install complete: double-click the HTKK desktop icon to open the launcher; updates run daily at 09:00.'
+if (Test-Path -LiteralPath $legacyRoot) {
+    Remove-Item -LiteralPath $legacyRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+Write-Step 'Install complete: double-click the HTTK desktop icon to open the launcher; updates run daily at 09:00.'
 Write-Host ''
-Write-Host 'Done. HTKK auto-updater installed: daily 09:00 updates, HTKK desktop launcher created.' -ForegroundColor Green
+Write-Host 'Done. HTTK auto-updater installed: daily 09:00 updates, HTTK desktop launcher created.' -ForegroundColor Green

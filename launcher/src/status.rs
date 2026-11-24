@@ -1,10 +1,13 @@
-//! Status gathering (HTKK install, scheduled task, saved updater result) and
+//! Status gathering (HTTK install, scheduled task, saved updater result) and
 //! pure parsing logic, mirroring Get-InstalledRelease / Get-LauncherInfo in
-//! HtkkLauncher.ps1.
+//! HttkLauncher.ps1.
 
 use std::path::{Path, PathBuf};
 
-pub const TASK_NAME: &str = "HTKK Daily Updater";
+pub const TASK_NAME: &str = "HTTK Daily Updater";
+/// Pre-1.2.0 installs used the HtkkUpdater naming; still honored so an
+/// upgraded exe keeps working before the installer migrates the task.
+pub const LEGACY_TASK_NAME: &str = "HTKK Daily Updater";
 
 /// Result from the Task Scheduler lookup.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,7 +61,7 @@ pub enum Pill {
     Error,
 }
 
-/// Pill-state logic, ported from the `$refresh` block of HtkkLauncher.ps1.
+/// Pill-state logic, ported from the `$refresh` block of HttkLauncher.ps1.
 pub fn pill_state(info: &StatusInfo) -> Pill {
     let (running, _disabled) = match &info.task {
         TaskLookup::Found { state, .. } => (*state == 4, *state == 1),
@@ -180,16 +183,16 @@ pub fn parse_installed_version(xml: &str) -> Result<String, String> {
         }
     }
     if matches.len() != 1 {
-        return Err("HTKK release version is missing or ambiguous.".into());
+        return Err("HTTK release version is missing or ambiguous.".into());
     }
     let v = &matches[0];
     if parse_version(v).is_none() {
-        return Err("Invalid HTKK release version.".into());
+        return Err("Invalid HTTK release version.".into());
     }
     Ok(v.clone())
 }
 
-/// Parse %ProgramData%\HtkkUpdater\last-result.json (written by ConvertTo-Json,
+/// Parse %ProgramData%\HttkUpdater\last-result.json (written by ConvertTo-Json,
 /// may carry a UTF-8 BOM). Malformed or missing-Status => None, never panics.
 pub fn parse_last_result(
     text: &str,
@@ -251,6 +254,12 @@ pub fn normalize_time(t: &str) -> Option<String> {
 
 pub fn result_path() -> PathBuf {
     PathBuf::from(std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into()))
+        .join(r"HttkUpdater\last-result.json")
+}
+
+/// Pre-1.2.0 install root — still read when the new dir has no result yet.
+fn legacy_result_path() -> PathBuf {
+    PathBuf::from(std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into()))
         .join(r"HtkkUpdater\last-result.json")
 }
 
@@ -271,13 +280,17 @@ pub fn gather(task: TaskLookup) -> StatusInfo {
             Err(e) => info.version_error = Some(e.to_string()),
         }
     } else {
-        info.version_error = Some("HTKK configuration not found.".into());
+        info.version_error = Some("HTTK configuration not found.".into());
     }
-    let rp = result_path();
-    if let Ok(meta) = std::fs::metadata(&rp) {
-        let mtime = meta.modified().ok();
-        if let Ok(text) = std::fs::read_to_string(&rp) {
-            info.result = parse_last_result(&text, mtime);
+    for rp in [result_path(), legacy_result_path()] {
+        if let Ok(meta) = std::fs::metadata(&rp) {
+            let mtime = meta.modified().ok();
+            if let Ok(text) = std::fs::read_to_string(&rp) {
+                info.result = parse_last_result(&text, mtime);
+                if info.result.is_some() {
+                    break;
+                }
+            }
         }
     }
     info

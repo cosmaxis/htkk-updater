@@ -72,8 +72,8 @@ jobs:
         run: |
           $ver = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([0-9.]+)"').Groups[1].Value
           if (($ver -split '\.').Count -eq 3) { $ver = "$ver.0" }
-          ./embed-resources.ps1 -ExePath target/release/htkk-launcher.exe -IcoPath assets/htkk.ico -ManifestPath app.manifest -Version $ver
-          $exe = Resolve-Path target/release/htkk-launcher.exe
+          ./embed-resources.ps1 -ExePath target/release/httk-launcher.exe -IcoPath assets/httk.ico -ManifestPath app.manifest -Version $ver
+          $exe = Resolve-Path target/release/httk-launcher.exe
           if ((Get-Item $exe).VersionInfo.FileVersion -ne $ver) { throw "version info missing after embed" }
           Add-Type -AssemblyName System.Drawing
           $ico = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
@@ -82,8 +82,8 @@ jobs:
       - name: Compute SHA256
         shell: pwsh
         run: |
-          $hash = (Get-FileHash -LiteralPath target\release\htkk-launcher.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  htkk-launcher.exe" | Out-File -FilePath target\release\htkk-launcher.exe.sha256 -Encoding ascii
+          $hash = (Get-FileHash -LiteralPath target\release\httk-launcher.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  httk-launcher.exe" | Out-File -FilePath target\release\httk-launcher.exe.sha256 -Encoding ascii
 
       - name: Upload release assets
         env:
@@ -94,4 +94,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create ${{ github.ref_name }} --title ${{ github.ref_name }} --generate-notes
           }
-          gh release upload ${{ github.ref_name }} target\release\htkk-launcher.exe target\release\htkk-launcher.exe.sha256 --clobber
+          gh release upload ${{ github.ref_name }} target\release\httk-launcher.exe target\release\httk-launcher.exe.sha256 --clobber

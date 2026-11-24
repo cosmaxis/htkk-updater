@@ -9,7 +9,7 @@ if (-not $install) { $install = 'C:\Program Files (x86)\HTKK' }
 $exe = Join-Path $install 'Project\HTKK.exe'
 $config = Join-Path $install 'Project\HTKK.exe.config'
 function Get-InstalledRelease([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'HTKK configuration not found.' }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'HTTK configuration not found.' }
     $xml = New-Object System.Xml.XmlDocument
     $xml.XmlResolver = $null
     $settings = New-Object System.Xml.XmlReaderSettings
@@ -17,16 +17,27 @@ function Get-InstalledRelease([string]$Path) {
     $reader = [System.Xml.XmlReader]::Create($Path,$settings)
     try { $xml.Load($reader) } finally { $reader.Dispose() }
     $nodes = @($xml.SelectNodes('/configuration/appSettings/add[@key="VERSION"]'))
-    if ($nodes.Count -ne 1) { throw 'HTKK release version is missing or ambiguous.' }
+    if ($nodes.Count -ne 1) { throw 'HTTK release version is missing or ambiguous.' }
     $version = $null
-    if (-not [version]::TryParse($nodes[0].GetAttribute('value'),[ref]$version) -or $version.Build -lt 0) { throw 'Invalid HTKK release version.' }
+    if (-not [version]::TryParse($nodes[0].GetAttribute('value'),[ref]$version) -or $version.Build -lt 0) { throw 'Invalid HTTK release version.' }
     return $version.ToString()
+}
+function Get-UpdaterTasks {
+    # Look up the daily task under its current name and the pre-1.2.0 name;
+    # 'not found' is skipped per name, real errors still surface.
+    $out = @()
+    foreach ($tn in 'HTTK Daily Updater','HTKK Daily Updater') {
+        try { $out += @(Get-ScheduledTask -TaskName $tn -ErrorAction Stop) } catch {
+            if ($_.FullyQualifiedErrorId -notmatch 'ObjectNotFound|NoMatching' -and $_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }
+        }
+    }
+    return $out
 }
 function Get-LauncherStatus([string]$ConfigPath,[string]$ResultPath) {
     $lines = New-Object 'System.Collections.Generic.List[string]'
-    try { $lines.Add("Installed HTKK release (live): $(Get-InstalledRelease $ConfigPath)") } catch { $lines.Add("Installed version unavailable: $($_.Exception.Message)") }
+    try { $lines.Add("Installed HTTK release (live): $(Get-InstalledRelease $ConfigPath)") } catch { $lines.Add("Installed version unavailable: $($_.Exception.Message)") }
     try {
-        $tasks = @(Get-ScheduledTask -TaskName 'HTKK Daily Updater' -ErrorAction Stop)
+        $tasks = @(Get-UpdaterTasks)
         if ($tasks.Count -eq 0) { $lines.Add('Scheduled task: not found') }
         elseif ($tasks.Count -ne 1) { $lines.Add('Scheduled task: ambiguous (multiple matching tasks)') }
         else {
@@ -56,7 +67,7 @@ function Get-LauncherStatus([string]$ConfigPath,[string]$ResultPath) {
     return ($lines -join "`r`n")
 }
 if ($CheckOnly) {
-    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'HTKK executable not found.' }
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'HTTK executable not found.' }
     Get-InstalledRelease $config
     return
 }
@@ -78,7 +89,7 @@ public class BufPanel : Panel {
     }
 }
 '@ -ReferencedAssemblies System.Windows.Forms, System.Drawing
-$resultPath = Join-Path $env:ProgramData 'HtkkUpdater\last-result.json'
+$resultPath = Join-Path $env:ProgramData 'HttkUpdater\last-result.json'
 
 function Get-LauncherInfo {
     $info = [ordered]@{
@@ -97,7 +108,7 @@ function Get-LauncherInfo {
     }
     try { $info.InstalledVersion = Get-InstalledRelease $config } catch { $info.VersionError = $_.Exception.Message }
     try {
-        $tasks = @(Get-ScheduledTask -TaskName 'HTKK Daily Updater' -ErrorAction Stop)
+        $tasks = @(Get-UpdaterTasks)
         if ($tasks.Count -eq 1) {
             $info.TaskState = [string]$tasks[0].State
             if ($tasks[0].Triggers.Count -gt 0) {
@@ -124,7 +135,7 @@ function Get-LauncherInfo {
 }
 
 # ---- preferences + i18n ----
-$prefPath = Join-Path $env:LOCALAPPDATA 'HtkkUpdater\prefs.json'
+$prefPath = Join-Path $env:LOCALAPPDATA 'HttkUpdater\prefs.json'
 $script:Lang = 'en'
 try {
     if ([IO.File]::Exists($prefPath)) {
@@ -153,9 +164,9 @@ $L = @{
         settings     = 'SETTINGS'
         timeLabel    = 'Daily update time'
         apply        = 'Apply'
-        open         = 'Open HTKK'
+        open         = 'Open HTTK'
         check        = 'Check for updates'
-        taskMissing  = 'Not installed - run Install-HtkkUpdater.ps1'
+        taskMissing  = 'Not installed - run Install-HttkUpdater.ps1'
         taskFmt      = '{0} - daily at {1}'
         unavailable  = 'Unavailable: {0}'
         never        = 'Never'
@@ -175,7 +186,7 @@ $L = @{
         disabled     = 'The scheduled updater is disabled.'
         alreadyRun   = 'The updater is already running.'
         taskErr      = 'Expected exactly one scheduled updater task.'
-        exeMissing   = 'HTKK executable not found.'
+        exeMissing   = 'HTTK executable not found.'
     }
     vi = @{
         subtitle     = 'Tự động cập nhật - mỗi ngày lúc {0}'
@@ -187,9 +198,9 @@ $L = @{
         settings     = 'CÀI ĐẶT'
         timeLabel    = 'Giờ cập nhật mỗi ngày'
         apply        = 'Áp dụng'
-        open         = 'Mở HTKK'
+        open         = 'Mở HTTK'
         check        = 'Kiểm tra cập nhật'
-        taskMissing  = 'Chưa cài đặt - hãy chạy Install-HtkkUpdater.ps1'
+        taskMissing  = 'Chưa cài đặt - hãy chạy Install-HttkUpdater.ps1'
         taskFmt      = '{0} - mỗi ngày lúc {1}'
         unavailable  = 'Không khả dụng: {0}'
         never        = 'Chưa từng'
@@ -246,7 +257,7 @@ $fontPill  = New-Object Drawing.Font('Segoe UI Semibold', 8.5)
 $fontBtn   = New-Object Drawing.Font('Segoe UI Semibold', 9.5)
 
 $form = New-Object Windows.Forms.Form
-$form.Text = 'HTKK'
+$form.Text = 'HTTK'
 $form.ClientSize = New-Object Drawing.Size(440, 652)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'None'
@@ -341,7 +352,7 @@ $header.Controls.Add($btnMin)
 $header.Controls.Add($btnClose)
 
 $title = New-Object Windows.Forms.Label
-$title.Text = 'HTKK Updater'
+$title.Text = 'HTTK Updater'
 $title.Font = $fontTitle
 $title.ForeColor = $ink
 $title.SetBounds(74, 24, 260, 26)
@@ -703,28 +714,28 @@ $btnOpen.Add_Click({
     try {
         if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw (Str 'exeMissing') }
         Start-Process -FilePath $exe -WorkingDirectory ([IO.Path]::GetDirectoryName($exe))
-    } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTKK', 'OK', 'Error') | Out-Null }
+    } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTTK', 'OK', 'Error') | Out-Null }
 })
 $form.Controls.Add($btnOpen)
 
 $btnCheck = New-UIButton '' (New-Object Drawing.Rectangle(228, 556, 188, 46)) $false
 $btnCheck.Add_Click({
     try {
-        $tasks = @(Get-ScheduledTask -TaskName 'HTKK Daily Updater' -ErrorAction Stop)
+        $tasks = @(Get-UpdaterTasks)
         if ($tasks.Count -ne 1) { throw (Str 'taskErr') }
         $task = $tasks[0]
         if ($task.State -eq 'Disabled') { throw (Str 'disabled') }
         if ($task.State -eq 'Running') { throw (Str 'alreadyRun') }
         $task | Start-ScheduledTask -ErrorAction Stop
         $pill.Tag.Text = Str 'pillRunning'; $pill.Tag.Color = $warn; $pill.Invalidate()
-    } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTKK', 'OK', 'Error') | Out-Null }
+    } catch { [Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'HTTK', 'OK', 'Error') | Out-Null }
     finally { & $refresh }
 })
 $form.Controls.Add($btnCheck)
 
 # ---- footer ----
 $footer = New-Object Windows.Forms.Label
-$footer.Text = 'github.com/cosmaxis/htkk-updater'
+$footer.Text = 'github.com/cosmaxis/httk-updater'
 $footer.Font = $fontSmall
 $footer.ForeColor = [Drawing.Color]::FromArgb(90, 96, 110)
 $footer.TextAlign = 'MiddleCenter'
@@ -800,13 +811,36 @@ $btnApply.Add_Click({
     $lblSave.Text = Str 'saving'
     [Windows.Forms.Application]::DoEvents()
     try {
-        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if ($isAdmin) {
-            & schtasks /change /tn 'HTKK Daily Updater' /st $t | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "schtasks exit $LASTEXITCODE" }
-        } else {
-            $p = Start-Process -FilePath 'schtasks.exe' -ArgumentList '/change','/tn','HTKK Daily Updater','/st',$t -Verb RunAs -Wait -PassThru -ErrorAction Stop
-            if ($p.ExitCode -ne 0) { throw "schtasks exit $($p.ExitCode)" }
+        # Task Scheduler COM — schtasks /change cannot edit S4U tasks (it
+        # demands the account password and hangs on a hidden console).
+        $setTimeBody = {
+            param($hhmm)
+            $svc = New-Object -ComObject Schedule.Service
+            $svc.Connect()
+            $folder = $svc.GetFolder('\')
+            $task = $null; $taskName = $null
+            foreach ($n in 'HTTK Daily Updater','HTKK Daily Updater') { try { $task = $folder.GetTask($n); $taskName = $n; break } catch {} }
+            if (-not $task) { throw 'updater task not found' }
+            $def = $task.Definition
+            $trig = $def.Triggers.Item(1)
+            $sb = [string]$trig.StartBoundary
+            if ($sb.Length -lt 19 -or $sb[10] -ne 'T') { throw "unexpected StartBoundary: $sb" }
+            $trig.StartBoundary = $sb.Substring(0,11) + $hhmm + ':00' + $sb.Substring(19)
+            $folder.RegisterTaskDefinition($taskName, $def, 6, $null, $null, 2, $null) | Out-Null
+        }
+        try {
+            & $setTimeBody $t
+        } catch {
+            $isDenied = "$($_.Exception.Message)" -match '0x80070005|Access is denied'
+            if (-not $isDenied) { throw }
+            # hardened builds deny unprivileged task writes -> one elevated run
+            $tmpScript = Join-Path $env:TEMP ('httk-settime-' + $PID + '.ps1')
+            $body = "`$svc = New-Object -ComObject Schedule.Service`n`$svc.Connect()`n`$folder = `$svc.GetFolder('\')`n`$task = `$null; `$taskName = `$null`nforeach (`$n in 'HTTK Daily Updater','HTKK Daily Updater') { try { `$task = `$folder.GetTask(`$n); `$taskName = `$n; break } catch {} }`nif (-not `$task) { throw 'updater task not found' }`n`$def = `$task.Definition`n`$trig = `$def.Triggers.Item(1)`n`$sb = [string]`$trig.StartBoundary`n`$trig.StartBoundary = `$sb.Substring(0,11) + '$t' + ':00' + `$sb.Substring(19)`n`$folder.RegisterTaskDefinition(`$taskName, `$def, 6, `$null, `$null, 2, `$null) | Out-Null"
+            Set-Content -LiteralPath $tmpScript -Value $body -Encoding UTF8
+            try {
+                $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',"`"$tmpScript`"" -Verb RunAs -Wait -PassThru -ErrorAction Stop
+                if ($p.ExitCode -ne 0) { throw "elevated apply failed (exit $($p.ExitCode))" }
+            } finally { Remove-Item -LiteralPath $tmpScript -Force -ErrorAction SilentlyContinue }
         }
         $lblSave.ForeColor = $good
         $lblSave.Text = (Str 'saved') -f $t
