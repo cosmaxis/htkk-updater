@@ -136,7 +136,14 @@ foreach ($file in $ScriptFiles) {
 
 $sevenZipExe = Join-Path $SevenZipDir '7z.exe'
 $sevenZipDll = Join-Path $SevenZipDir '7z.dll'
-$payloadSevenZip = if ($PayloadDir) { Join-Path $PayloadDir '7z' } else { $null }
+# Payload 7z lives either inside PayloadDir or as its sibling (Inno stages
+# payload\bin\* -> {app}\bin and payload\7z\* -> {app}\7z).
+$payloadSevenZip = $null
+if ($PayloadDir) {
+    foreach ($cand in @((Join-Path $PayloadDir '7z'), (Join-Path (Split-Path $PayloadDir -Parent) '7z'))) {
+        if (Test-Path -LiteralPath (Join-Path $cand '7z.exe') -PathType Leaf) { $payloadSevenZip = $cand; break }
+    }
+}
 if ($payloadSevenZip -and (Test-Path -LiteralPath (Join-Path $payloadSevenZip '7z.exe') -PathType Leaf)) {
     [IO.Directory]::CreateDirectory($SevenZipDir) | Out-Null
     Copy-Item -LiteralPath (Join-Path $payloadSevenZip '7z.exe') -Destination $sevenZipExe -Force
