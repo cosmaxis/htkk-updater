@@ -137,10 +137,13 @@ foreach ($file in $ScriptFiles) {
 $sevenZipExe = Join-Path $SevenZipDir '7z.exe'
 $sevenZipDll = Join-Path $SevenZipDir '7z.dll'
 # Payload 7z lives either inside PayloadDir or as its sibling (Inno stages
-# payload\bin\* -> {app}\bin and payload\7z\* -> {app}\7z).
+# payload\bin\* -> {app}\bin and payload\7z\* -> {app}\7z). The sibling IS the
+# destination dir in that layout, so it is skipped — the need7z check below
+# already sees the files present and hash-verifies them.
 $payloadSevenZip = $null
 if ($PayloadDir) {
     foreach ($cand in @((Join-Path $PayloadDir '7z'), (Join-Path (Split-Path $PayloadDir -Parent) '7z'))) {
+        if ([IO.Path]::GetFullPath($cand) -ieq [IO.Path]::GetFullPath($SevenZipDir)) { continue }
         if (Test-Path -LiteralPath (Join-Path $cand '7z.exe') -PathType Leaf) { $payloadSevenZip = $cand; break }
     }
 }
