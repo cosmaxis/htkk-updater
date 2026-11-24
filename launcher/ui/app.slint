@@ -211,13 +211,17 @@ component Pill inherits Rectangle {
         height: parent.height;
         alignment: center;
         spacing: 8px;
-        Rectangle {
+        Rectangle { // stretches to layout height so the dot can center vertically
             width: 8px;
-            height: 8px;
-            border-radius: 4px;
-            background: c;
-            opacity: root.pulse ? (root.blink ? 0.35 : 1.0) : 1.0;
-            animate opacity { duration: 400ms; }
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 4px;
+                background: c;
+                opacity: root.pulse ? (root.blink ? 0.35 : 1.0) : 1.0;
+                animate opacity { duration: 400ms; }
+            }
         }
         t := Text {
             text: root.text;

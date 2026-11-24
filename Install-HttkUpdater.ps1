@@ -19,10 +19,10 @@ $BinDir = Join-Path $InstallRoot 'bin'
 $SevenZipDir = Join-Path $InstallRoot '7z'
 $LogPath = Join-Path $InstallRoot 'install.log'
 $ScriptFiles = 'HttkUpdater.psm1','Invoke-HttkUpdate.ps1','HttkLauncher.ps1','Install-HttkUpdater.ps1'
-$LauncherVersion = '1.2.0'
+$LauncherVersion = '1.2.1'
 # Set at release time from the httk-launcher.exe.sha256 published with the
 # v* GitHub release. Empty string = use the PowerShell launcher.
-$LauncherSha256 = '17673CBE96A0E816122A3F860FA4F7B1B2BFA4D030098AA44E81962D10DC179D'
+$LauncherSha256 = '6C17E3F6459C1680ACB90B0C0940437104EC6546D74C25B8E6350A36147272CB'
 $SevenZipMsiUrl = 'https://www.7-zip.org/a/7z2606-x64.msi'
 $SevenZipMsiSha256 = '6DC822569E777D9A3ECD5FFCBC22B55600AF87E6C5D9810A64E8566CF5A4AF9F'
 $SevenZipExeSha256 = 'DC0493429FE28136FCB177A0E77C9875CBB3B0BFF5F2F8EEBA4DF302E98CEF76'
